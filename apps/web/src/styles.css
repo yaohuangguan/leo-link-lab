@@ -374,3 +374,64 @@ h2{margin:0;color:#eef8fb;font-size:20px;line-height:1.2}
   .tracking-toolbar{align-items:flex-start;flex-direction:column}
   .realtime-sky-panel{padding:14px}
 }
+
+
+/* Real MapLibre Earth view */
+.earth-view-panel{padding:22px;overflow:hidden}
+.earth-view-header{align-items:flex-start}
+.earth-view-copy{margin:7px 0 0;color:#8199a6;font-size:12px;line-height:1.5}
+.earth-view-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.earth-view-actions button{
+  border:1px solid #28566b;border-radius:9px;background:#061720;color:#8fa8b4;
+  padding:9px 12px;font-size:11px;font-weight:800;cursor:pointer
+}
+.earth-view-actions button:hover:not(:disabled){color:#eafcff;border-color:#3b8196}
+.earth-view-actions button.active{background:#0b3138;color:#dffefa;border-color:#347a70}
+.earth-view-actions button:disabled{opacity:.42;cursor:not-allowed}
+.real-earth-map{
+  width:100%;height:520px;margin-top:16px;border:1px solid #173b4e;border-radius:13px;overflow:hidden;
+  background:#02070c
+}
+.real-earth-map .maplibregl-canvas{outline:none}
+.real-earth-map .maplibregl-ctrl-group{
+  background:#06141ddd;border:1px solid #1b4355;box-shadow:none
+}
+.real-earth-map .maplibregl-ctrl-group button{background-color:transparent}
+.real-earth-map .maplibregl-ctrl-group button:hover{background-color:#0c2934}
+.real-earth-map .maplibregl-ctrl-icon{filter:invert(1) opacity(.76)}
+.real-earth-map .maplibregl-ctrl-attrib{
+  background:#020a10cc;color:#9bb0ba;font-size:9px
+}
+.real-earth-map .maplibregl-ctrl-attrib a{color:#b9d3dc}
+.earth-map-marker{
+  display:flex;align-items:center;gap:7px;pointer-events:none;white-space:nowrap;
+  transform:translateY(-2px)
+}
+.earth-map-marker i{
+  width:14px;height:14px;border-radius:50%;border:3px solid #e9fff7;
+  box-shadow:0 0 0 5px #4ff0a42a,0 0 15px #4ff0a4
+}
+.earth-map-marker span{
+  padding:5px 7px;border-radius:6px;background:#031018df;border:1px solid #285c4a;
+  color:#effdf7;font:800 10px ui-monospace,monospace
+}
+.earth-map-marker.satellite i{
+  border-radius:3px;border-color:#eaf9ff;box-shadow:0 0 0 5px #63e8ff24,0 0 15px #63e8ff;
+  background:#17445e
+}
+.earth-map-marker.satellite span{border-color:#2e6479;color:#e7faff}
+.earth-view-readout{display:grid;grid-template-columns:1.15fr 1fr .85fr;gap:9px;margin-top:11px}
+.earth-view-readout>div{padding:12px 13px;border:1px solid #17394b;border-radius:10px;background:#05121b}
+.earth-view-readout span{display:block;color:#708b9a;font:800 9px ui-monospace,monospace;letter-spacing:.07em}
+.earth-view-readout strong{display:block;margin-top:5px;color:#eef8fb;font-size:13px}
+.earth-view-readout small{display:block;margin-top:4px;color:#7b93a0;font:700 10px ui-monospace,monospace}
+.earth-view-note{
+  margin-top:10px;padding:10px 12px;border-left:3px solid #5ee9ff;background:#06151e;
+  color:#8098a5;font-size:11px;line-height:1.55
+}
+@media(max-width:760px){
+  .earth-view-header{flex-direction:column}
+  .earth-view-actions{justify-content:flex-start;margin-top:10px}
+  .real-earth-map{height:430px}
+  .earth-view-readout{grid-template-columns:1fr}
+}
