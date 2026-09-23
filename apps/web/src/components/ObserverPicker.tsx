@@ -1,4 +1,5 @@
 import { FormEvent, useMemo, useState } from 'react';
+import { useI18n } from '../i18n';
 
 export type ObserverLocation = {
   label: string;
@@ -28,6 +29,7 @@ const presets: ObserverLocation[] = [
 ];
 
 export default function ObserverPicker({ apiBase, location, onChange }: Props) {
+  const { t } = useI18n();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -55,11 +57,11 @@ export default function ObserverPicker({ apiBase, location, onChange }: Props) {
     try {
       const response = await fetch(`${apiBase}/api/geocode?q=${encodeURIComponent(q)}`);
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error || 'Search failed');
+      if (!response.ok) throw new Error(body.error || t('Search failed'));
       setResults(body.results || []);
-      if (!body.results?.length) setMessage('No matching place found.');
+      if (!body.results?.length) setMessage(t('No matching place found.'));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Search failed');
+      setMessage(error instanceof Error ? error.message : t('Search failed'));
     } finally {
       setSearching(false);
     }
@@ -67,19 +69,19 @@ export default function ObserverPicker({ apiBase, location, onChange }: Props) {
 
   const useDeviceLocation = () => {
     if (!navigator.geolocation) {
-      setMessage('Geolocation is not available in this browser.');
+      setMessage(t('Geolocation is not available in this browser.'));
       return;
     }
-    setMessage('Requesting browser location…');
+    setMessage(t('Requesting browser location…'));
     navigator.geolocation.getCurrentPosition(
       position => {
         apply({
-          label: 'Current device location',
+          label: t('Current device location'),
           latDeg: position.coords.latitude,
           lonDeg: position.coords.longitude,
         });
       },
-      error => setMessage(error.message || 'Location permission was not granted.'),
+      error => setMessage(error.message || t('Location permission was not granted.')),
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
     );
   };
@@ -89,7 +91,7 @@ export default function ObserverPicker({ apiBase, location, onChange }: Props) {
     const lat = Number(latInput);
     const lon = Number(lonInput);
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
-      setMessage('Latitude must be −90…90 and longitude −180…180.');
+      setMessage(t('Latitude must be −90…90 and longitude −180…180.'));
       return;
     }
     apply({ label: `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`, latDeg: lat, lonDeg: lon });
@@ -98,22 +100,22 @@ export default function ObserverPicker({ apiBase, location, onChange }: Props) {
   return (
     <section className="observer-picker">
       <div className="observer-current">
-        <span>OBSERVER LOCATION</span>
+        <span>{t('OBSERVER LOCATION')}</span>
         <strong>{shortLabel}</strong>
         <small>{location.latDeg.toFixed(4)}° · {location.lonDeg.toFixed(4)}°</small>
       </div>
 
       <form className="observer-search" onSubmit={search}>
-        <label htmlFor="place-search">Search any city or place</label>
+        <label htmlFor="place-search">{t('Search any city or place')}</label>
         <div>
           <input
             id="place-search"
             value={query}
             onChange={event => setQuery(event.target.value)}
-            placeholder="e.g. Queenstown, Paris, Shanghai…"
+            placeholder={t('e.g. Queenstown, Paris, Shanghai…')}
           />
           <button type="submit" disabled={searching || query.trim().length < 2}>
-            {searching ? 'Searching…' : 'Search'}
+            {searching ? t('Searching…') : t('Search')}
           </button>
         </div>
         {results.length > 0 && (
@@ -129,11 +131,11 @@ export default function ObserverPicker({ apiBase, location, onChange }: Props) {
       </form>
 
       <div className="observer-actions">
-        <button type="button" onClick={useDeviceLocation}>Use my location</button>
+        <button type="button" onClick={useDeviceLocation}>{t('Use my location')}</button>
         <form onSubmit={applyCoordinates}>
           <input aria-label="Latitude" value={latInput} onChange={event => setLatInput(event.target.value)} />
           <input aria-label="Longitude" value={lonInput} onChange={event => setLonInput(event.target.value)} />
-          <button type="submit">Apply coordinates</button>
+          <button type="submit">{t('Apply coordinates')}</button>
         </form>
       </div>
 
@@ -144,7 +146,7 @@ export default function ObserverPicker({ apiBase, location, onChange }: Props) {
       </div>
 
       {message && <p className="observer-message">{message}</p>}
-      <p className="geocode-credit">Place search © OpenStreetMap contributors · submit-only search, no autocomplete.</p>
+      <p className="geocode-credit">{t('Place search © OpenStreetMap contributors · submit-only search, no autocomplete.')}</p>
     </section>
   );
 }

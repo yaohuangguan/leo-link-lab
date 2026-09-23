@@ -1,4 +1,5 @@
 import type { SatelliteLink } from '../types';
+import { useI18n } from '../i18n';
 
 type TrackPoint = {
   azimuthDeg: number;
@@ -44,22 +45,23 @@ function pointsString(points: TrackPoint[]) {
     .join(' ');
 }
 
-function timeLabel(seconds: number) {
-  if (seconds === 0) return 'NOW';
-  const minutes = Math.round(Math.abs(seconds) / 60);
-  return seconds < 0 ? `−${minutes}m` : `+${minutes}m`;
-}
-
 export default function SkyPlot({ current, track, locationLabel }: Props) {
+  const { t } = useI18n();
   const currentPoint = current ? project(current.azimuthDeg, current.elevationDeg) : null;
   const past = track.filter(point => point.seconds <= 0 && point.elevationDeg >= 0);
   const future = track.filter(point => point.seconds >= 0 && point.elevationDeg >= 0);
+
+  const timeLabel = (seconds: number) => {
+    if (seconds === 0) return t('NOW');
+    const minutes = Math.round(Math.abs(seconds) / 60);
+    return seconds < 0 ? `−${minutes}m` : `+${minutes}m`;
+  };
 
   return (
     <section className="panel rigorous-sky-panel">
       <div className="panel-title-row">
         <div>
-          <p className="eyebrow">AZIMUTH–ELEVATION SKY PLOT</p>
+          <p className="eyebrow">{t('AZIMUTH–ELEVATION SKY PLOT')}</p>
           <h2>{locationLabel.split(',').slice(0, 2).join(', ')}</h2>
         </div>
         {current && (
@@ -70,8 +72,7 @@ export default function SkyPlot({ current, track, locationLabel }: Props) {
       </div>
 
       <p className="sky-method-note">
-        Standard observer-centred polar sky plot: azimuth increases clockwise from true north;
-        radial distance is linear zenith distance, r ∝ (90° − elevation).
+        {t('Standard observer-centred polar sky plot: azimuth increases clockwise from true north; radial distance is linear zenith distance, r ∝ (90° − elevation).')}
       </p>
 
       <div className="rigorous-sky-layout">
@@ -121,7 +122,7 @@ export default function SkyPlot({ current, track, locationLabel }: Props) {
           <text x={SIZE - 28} y={C + 5} textAnchor="end" className="sky-cardinal">E · 90°</text>
           <text x={C} y={SIZE - 18} textAnchor="middle" className="sky-cardinal">S · 180°</text>
           <text x="28" y={C + 5} className="sky-cardinal">W · 270°</text>
-          <text x={C} y={C + 5} textAnchor="middle" className="sky-zenith">ZENITH · 90° EL</text>
+          <text x={C} y={C + 5} textAnchor="middle" className="sky-zenith">{t('ZENITH · 90° EL')}</text>
 
           {past.length > 1 && <polyline points={pointsString(past)} className="sky-past-path" />}
           {future.length > 1 && <polyline points={pointsString(future)} className="sky-future-path" />}
@@ -156,32 +157,35 @@ export default function SkyPlot({ current, track, locationLabel }: Props) {
 
         <aside className="sky-rigor-panel">
           <div>
-            <span>AZIMUTH</span>
+            <span>{t('AZIMUTH')}</span>
             <strong>{current ? `${current.azimuthDeg.toFixed(1)}° · ${compassLabel(current.azimuthDeg)}` : '—'}</strong>
-            <p>Measured clockwise from true north: 0° N, 90° E, 180° S, 270° W.</p>
+            <p>{t('Measured clockwise from true north: 0° N, 90° E, 180° S, 270° W.')}</p>
           </div>
           <div>
-            <span>ELEVATION</span>
+            <span>{t('ELEVATION')}</span>
             <strong>{current ? `${current.elevationDeg.toFixed(1)}°` : '—'}</strong>
-            <p>0° is the astronomical horizon. 90° is directly overhead at the zenith.</p>
+            <p>{t('0° is the astronomical horizon. 90° is directly overhead at the zenith.')}</p>
           </div>
           <div>
-            <span>PLOT PROJECTION</span>
-            <strong>Linear zenith-distance</strong>
-            <p>Radius = R × (90° − elevation) / 90°. This is a coordinate plot, not a camera perspective.</p>
+            <span>{t('PLOT PROJECTION')}</span>
+            <strong>{t('Linear zenith-distance')}</strong>
+            <p>{t('Radius = R × (90° − elevation) / 90°. This is a coordinate plot, not a camera perspective.')}</p>
           </div>
           <div>
-            <span>TRACK</span>
-            <strong>Grey past · cyan future</strong>
-            <p>Track points are recomputed from the selected satellite orbit for this observer location.</p>
+            <span>{t('TRACK')}</span>
+            <strong>{t('Grey past · cyan future')}</strong>
+            <p>{t('Track points are recomputed from the selected satellite orbit for this observer location.')}</p>
           </div>
 
           {current && (
             <div className="sky-rigor-current">
-              <span>CURRENT GEOMETRY</span>
-              <strong>{current.rangeKm.toFixed(0)} km slant range</strong>
-              <b>{current.rangeRateMps < 0 ? 'Approaching observer' : 'Receding from observer'}</b>
-              <small>Altitude {current.altitudeKm.toFixed(0)} km · Doppler {(current.dopplerHz / 1000).toFixed(1)} kHz</small>
+              <span>{t('CURRENT GEOMETRY')}</span>
+              <strong>{t('{range} km slant range', { range: current.rangeKm.toFixed(0) })}</strong>
+              <b>{current.rangeRateMps < 0 ? t('Approaching observer') : t('Receding from observer')}</b>
+              <small>{t('Altitude {altitude} km · Doppler {doppler} kHz', {
+                altitude: current.altitudeKm.toFixed(0),
+                doppler: (current.dopplerHz / 1000).toFixed(1),
+              })}</small>
             </div>
           )}
         </aside>

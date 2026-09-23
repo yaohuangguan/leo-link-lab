@@ -1,3 +1,5 @@
+import { useI18n } from '../i18n';
+
 type Props = {
   label: string;
   unit: string;
@@ -19,6 +21,7 @@ function points(values: number[], width: number, height: number) {
 }
 
 export default function Sparkline({ label, unit, values, tone = 'cyan', digits = 1 }: Props) {
+  const { t } = useI18n();
   const latest = values.at(-1);
   const previous = values.at(-2);
   const delta = latest != null && previous != null ? latest - previous : 0;
@@ -27,7 +30,7 @@ export default function Sparkline({ label, unit, values, tone = 'cyan', digits =
     <article className={`trend-card ${tone}`}>
       <div className="trend-head">
         <div>
-          <span>{label}</span>
+          <span>{t(label)}</span>
           <strong>{latest == null ? '—' : latest.toFixed(digits)} <small>{unit}</small></strong>
         </div>
         <b className={delta > 0 ? 'up' : delta < 0 ? 'down' : ''}>
@@ -38,7 +41,7 @@ export default function Sparkline({ label, unit, values, tone = 'cyan', digits =
         <line x1="0" y1="91" x2="320" y2="91" className="trend-baseline" />
         {values.length > 1 && <polyline points={points(values, 320, 82)} className="trend-line" />}
       </svg>
-      <div className="trend-foot"><span>60 s history</span><span>live</span></div>
+      <div className="trend-foot"><span>{t('60 s history')}</span><span>{t('live')}</span></div>
     </article>
   );
 }

@@ -494,3 +494,16 @@ h2{margin:0;color:#eef8fb;font-size:20px;line-height:1.2}
   .rigorous-sky-panel{padding:14px}
   .sky-rigor-panel{grid-template-columns:1fr}
 }
+
+/* Settings + map fallback */
+.real-earth-map{background:#08385c}
+.settings-panel{padding:24px}
+.setting-row{display:flex;align-items:center;justify-content:space-between;gap:18px}
+.setting-row>div:first-child span{display:block;color:#718b9a;font:800 10px ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase}
+.setting-row>div:first-child strong{display:block;margin-top:7px;color:#edf8fb;font-size:18px}
+.language-toggle{display:flex;gap:8px;padding:5px;border:1px solid #183c50;border-radius:11px;background:#04111a}
+.language-toggle button{border:1px solid transparent;border-radius:8px;background:transparent;color:#819ba8;padding:10px 16px;font-size:13px;font-weight:800;cursor:pointer}
+.language-toggle button.active{color:#eafff8;background:#0b3138;border-color:#347a70}
+.language-toggle button:hover{color:#e9f7fb}
+html[lang='zh-CN'] body{font-family:Inter,'PingFang SC','Microsoft YaHei',ui-sans-serif,system-ui,sans-serif}
+@media(max-width:620px){.setting-row{align-items:flex-start;flex-direction:column}.language-toggle{width:100%}.language-toggle button{flex:1}}

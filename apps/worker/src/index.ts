@@ -15,6 +15,7 @@ const FALLBACK_FETCHED_AT = Date.now();
 const GEOCODE_TTL_SECONDS = 30 * 24 * 60 * 60;
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 const ESRI_IMAGERY = 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile';
+const ESRI_LABELS = 'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile';
 const IMAGERY_CACHE_SECONDS = 7 * 24 * 60 * 60;
 
 function cors(env: Env) {
@@ -76,13 +77,13 @@ function sampleEvenly<T>(items: T[], limit: number) {
   return Array.from({ length: limit }, (_, i) => items[Math.floor(i * stride)]);
 }
 
-async function imageryTile(z: number, x: number, y: number) {
+async function proxyRasterTile(baseUrl: string, cacheNamespace: string, z: number, x: number, y: number) {
   if (![z, x, y].every(Number.isInteger) || z < 0 || z > 18 || x < 0 || y < 0) {
     return new Response('Invalid tile coordinates', { status: 400 });
   }
 
-  const tileUrl = `${ESRI_IMAGERY}/${z}/${y}/${x}`;
-  const cacheKey = new Request(`https://leo-link-lab.internal/cache/imagery/${z}/${x}/${y}`);
+  const tileUrl = `${baseUrl}/${z}/${y}/${x}`;
+  const cacheKey = new Request(`https://leo-link-lab.internal/cache/${cacheNamespace}/${z}/${x}/${y}`);
   const cached = await caches.default.match(cacheKey);
   if (cached) return cached;
 
@@ -90,11 +91,11 @@ async function imageryTile(z: number, x: number, y: number) {
     signal: AbortSignal.timeout(8000),
     headers: { 'User-Agent': 'LEO-Link-Lab/1.0 satellite-education-map' },
   });
-  if (!response.ok) return new Response('Imagery upstream error', { status: response.status });
+  if (!response.ok) return new Response('Raster upstream error', { status: response.status });
 
   const result = new Response(response.body, {
     headers: {
-      'Content-Type': response.headers.get('Content-Type') || 'image/jpeg',
+      'Content-Type': response.headers.get('Content-Type') || 'image/png',
       'Cache-Control': `public, max-age=${IMAGERY_CACHE_SECONDS}`,
       'Access-Control-Allow-Origin': '*',
       'Cross-Origin-Resource-Policy': 'cross-origin',
@@ -105,6 +106,13 @@ async function imageryTile(z: number, x: number, y: number) {
   return result;
 }
 
+async function imageryTile(z: number, x: number, y: number) {
+  return proxyRasterTile(ESRI_IMAGERY, 'imagery', z, x, y);
+}
+
+async function labelTile(z: number, x: number, y: number) {
+  return proxyRasterTile(ESRI_LABELS, 'labels', z, x, y);
+}
 async function geocode(query: string) {
   const normalized = query.trim().replace(/\s+/g, ' ');
   const cacheKey = new Request(`https://leo-link-lab.internal/cache/geocode?q=${encodeURIComponent(normalized.toLowerCase())}`);
@@ -157,6 +165,22 @@ export default {
         headers: {
           ...headers,
           'Content-Type': response.headers.get('Content-Type') || 'image/jpeg',
+          'Cache-Control': response.headers.get('Cache-Control') || `public, max-age=${IMAGERY_CACHE_SECONDS}`,
+          'Cross-Origin-Resource-Policy': 'cross-origin',
+        },
+      });
+    }
+
+    const labelsMatch = url.pathname.match(/^\/api\/labels\/(\d+)\/(\d+)\/(\d+)$/);
+    if (labelsMatch) {
+      const [, z, x, y] = labelsMatch;
+      const response = await labelTile(Number(z), Number(x), Number(y));
+      const body = await response.arrayBuffer();
+      return new Response(body, {
+        status: response.status,
+        headers: {
+          ...headers,
+          'Content-Type': response.headers.get('Content-Type') || 'image/png',
           'Cache-Control': response.headers.get('Cache-Control') || `public, max-age=${IMAGERY_CACHE_SECONDS}`,
           'Cross-Origin-Resource-Policy': 'cross-origin',
         },
