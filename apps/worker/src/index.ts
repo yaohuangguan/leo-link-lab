@@ -14,6 +14,7 @@ const CACHE_KEY = new Request('https://leo-link-lab.internal/cache/starlink');
 const FALLBACK_FETCHED_AT = Date.now();
 const GEOCODE_TTL_SECONDS = 30 * 24 * 60 * 60;
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
+const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';
 const ESRI_IMAGERY = 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile';
 const ESRI_LABELS = 'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile';
 const IMAGERY_CACHE_SECONDS = 7 * 24 * 60 * 60;
@@ -135,9 +136,9 @@ async function imageryTile(z: number, x: number, y: number) {
 async function labelTile(z: number, x: number, y: number) {
   return proxyRasterTile(ESRI_LABELS, 'labels', z, x, y);
 }
-async function geocode(query: string) {
+async function geocode(query: string, language: 'en' | 'zh') {
   const normalized = query.trim().replace(/\s+/g, ' ');
-  const cacheKey = new Request(`https://leo-link-lab.internal/cache/geocode?q=${encodeURIComponent(normalized.toLowerCase())}`);
+  const cacheKey = new Request(`https://leo-link-lab.internal/cache/geocode?lang=${language}&q=${encodeURIComponent(normalized.toLowerCase())}`);
   const cached = await caches.default.match(cacheKey);
   if (cached) return cached;
 
@@ -145,13 +146,14 @@ async function geocode(query: string) {
   target.searchParams.set('q', normalized);
   target.searchParams.set('format', 'jsonv2');
   target.searchParams.set('limit', '5');
+  target.searchParams.set('accept-language', language === 'zh' ? 'zh-CN,zh,en' : 'en');
 
   const response = await fetch(target.toString(), {
     signal: AbortSignal.timeout(8000),
     headers: {
       'User-Agent': 'LEO-Link-Lab/1.0 (+https://leo-link-lab.719919153.workers.dev)',
       'Referer': 'https://leo-link-lab.719919153.workers.dev/',
-      'Accept-Language': 'en',
+      'Accept-Language': language === 'zh' ? 'zh-CN,zh;q=0.9,en;q=0.6' : 'en',
     },
   });
   if (!response.ok) throw new Error(`Geocoder returned HTTP ${response.status}`);
@@ -164,6 +166,38 @@ async function geocode(query: string) {
   })).filter(item => Number.isFinite(item.latDeg) && Number.isFinite(item.lonDeg));
 
   const result = Response.json({ results }, {
+    headers: { 'Cache-Control': `public, max-age=${GEOCODE_TTL_SECONDS}` },
+  });
+  await caches.default.put(cacheKey, result.clone());
+  return result;
+}
+
+async function reverseGeocode(lat: number, lon: number, language: 'en' | 'zh') {
+  const cacheKey = new Request(`https://leo-link-lab.internal/cache/reverse-geocode?lang=${language}&lat=${lat.toFixed(5)}&lon=${lon.toFixed(5)}`);
+  const cached = await caches.default.match(cacheKey);
+  if (cached) return cached;
+
+  const target = new URL(NOMINATIM_REVERSE);
+  target.searchParams.set('lat', String(lat));
+  target.searchParams.set('lon', String(lon));
+  target.searchParams.set('format', 'jsonv2');
+  target.searchParams.set('zoom', '10');
+  target.searchParams.set('addressdetails', '1');
+  target.searchParams.set('accept-language', language === 'zh' ? 'zh-CN,zh,en' : 'en');
+
+  const response = await fetch(target.toString(), {
+    signal: AbortSignal.timeout(8000),
+    headers: {
+      'User-Agent': 'LEO-Link-Lab/1.0 (+https://leo-link-lab.719919153.workers.dev)',
+      'Referer': 'https://leo-link-lab.719919153.workers.dev/',
+      'Accept-Language': language === 'zh' ? 'zh-CN,zh;q=0.9,en;q=0.6' : 'en',
+    },
+  });
+  if (!response.ok) throw new Error(`Reverse geocoder returned HTTP ${response.status}`);
+
+  const data = await response.json<{ display_name?: string }>();
+  const label = String(data.display_name || `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`);
+  const result = Response.json({ label, latDeg: lat, lonDeg: lon }, {
     headers: { 'Cache-Control': `public, max-age=${GEOCODE_TTL_SECONDS}` },
   });
   await caches.default.put(cacheKey, result.clone());
@@ -211,11 +245,12 @@ export default {
 
     if (url.pathname === '/api/geocode') {
       const query = (url.searchParams.get('q') || '').trim();
+      const language = url.searchParams.get('lang') === 'zh' ? 'zh' : 'en';
       if (query.length < 2 || query.length > 120) {
         return Response.json({ error: 'Search query must be 2–120 characters.' }, { status: 400, headers });
       }
       try {
-        const response = await geocode(query);
+        const response = await geocode(query, language);
         const body = await response.text();
         return new Response(body, {
           status: response.status,
@@ -223,6 +258,25 @@ export default {
         });
       } catch (error) {
         return Response.json({ error: error instanceof Error ? error.message : 'Geocoding failed' }, { status: 502, headers });
+      }
+    }
+
+    if (url.pathname === '/api/reverse-geocode') {
+      const lat = Number(url.searchParams.get('lat'));
+      const lon = Number(url.searchParams.get('lon'));
+      const language = url.searchParams.get('lang') === 'zh' ? 'zh' : 'en';
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+        return Response.json({ error: 'Invalid coordinates.' }, { status: 400, headers });
+      }
+      try {
+        const response = await reverseGeocode(lat, lon, language);
+        const body = await response.text();
+        return new Response(body, {
+          status: response.status,
+          headers: { ...headers, 'Content-Type': 'application/json', 'Cache-Control': response.headers.get('Cache-Control') || 'public, max-age=86400' },
+        });
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : 'Reverse geocoding failed' }, { status: 502, headers });
       }
     }
 

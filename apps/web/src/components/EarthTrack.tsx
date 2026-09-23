@@ -157,7 +157,7 @@ export default function EarthTrack({
   const [allSatelliteCount, setAllSatelliteCount] = useState(0);
   const [catalogTotal, setCatalogTotal] = useState(0);
 
-  const observerName = useMemo(() => stationLabel.split(',').slice(0, 2).join(', '), [stationLabel]);
+  const observerName = useMemo(() => stationLabel.split(/[,，]/).slice(0, 2).join(' · '), [stationLabel]);
 
   useEffect(() => {
     showAllRef.current = showAllSatellites;

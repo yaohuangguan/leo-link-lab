@@ -16,6 +16,7 @@ const DEFAULT_OBSERVER: ObserverLocation = {
   label: 'Auckland, New Zealand',
   latDeg: -36.8485,
   lonDeg: 174.7633,
+  locale: 'en',
 };
 
 const initialRadio: RadioConfig = {
@@ -102,11 +103,43 @@ export default function App() {
     url.searchParams.set('lon', station.lonDeg.toFixed(5));
     url.searchParams.set('place', station.label);
     window.history.replaceState({}, '', url);
+  }, [station.latDeg, station.lonDeg, station.label]);
+
+  useEffect(() => {
     setLockedNoradId(null);
     setManualSelection(false);
     betterCandidate.current = null;
     lockStartedAt.current = Date.now();
-  }, [station]);
+  }, [station.latDeg, station.lonDeg]);
+
+  useEffect(() => {
+    if (station.locale === language) return;
+    const controller = new AbortController();
+
+    fetch(`${API}/api/reverse-geocode?lat=${station.latDeg}&lon=${station.lonDeg}&lang=${language}`, {
+      signal: controller.signal,
+    })
+      .then(async response => {
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+        return body;
+      })
+      .then(body => {
+        setStation(previous => {
+          if (previous.latDeg !== station.latDeg || previous.lonDeg !== station.lonDeg) return previous;
+          return {
+            ...previous,
+            label: body.label || previous.label,
+            locale: language,
+          };
+        });
+      })
+      .catch(error => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+      });
+
+    return () => controller.abort();
+  }, [language, station.latDeg, station.lonDeg, station.locale]);
 
   const visible = useMemo(() => records
     .map(record => computeLink(record, station, radio, now))
@@ -220,7 +253,7 @@ export default function App() {
     betterCandidate.current = null;
   };
 
-  const placeShort = station.label.split(',')[0];
+  const placeShort = station.label.split(/[,，]/)[0];
 
   return (
     <div className="app-shell">

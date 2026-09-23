@@ -59,7 +59,7 @@ const zh: Record<string, string> = {
 
   'OBSERVER LOCATION': '观察点',
   'Search any city or place': '搜索任意城市或地点',
-  'e.g. Queenstown, Paris, Shanghai…': '例如：Queenstown、Paris、Shanghai…',
+  'e.g. Queenstown, Paris, Shanghai…': '例如：奥克兰、上海、皇后镇…',
   'Search': '搜索',
   'Use my location': '使用当前位置',
   'Apply coordinates': '应用经纬度',

@@ -5,6 +5,7 @@ export type ObserverLocation = {
   label: string;
   latDeg: number;
   lonDeg: number;
+  locale?: 'en' | 'zh' | 'neutral';
 };
 
 type SearchResult = {
@@ -19,17 +20,17 @@ type Props = {
   onChange: (location: ObserverLocation) => void;
 };
 
-const presets: ObserverLocation[] = [
-  { label: 'Auckland, New Zealand', latDeg: -36.8485, lonDeg: 174.7633 },
-  { label: 'Sydney, Australia', latDeg: -33.8688, lonDeg: 151.2093 },
-  { label: 'Singapore', latDeg: 1.3521, lonDeg: 103.8198 },
-  { label: 'Tokyo, Japan', latDeg: 35.6762, lonDeg: 139.6503 },
-  { label: 'London, United Kingdom', latDeg: 51.5072, lonDeg: -0.1276 },
-  { label: 'New York, United States', latDeg: 40.7128, lonDeg: -74.0060 },
+const presets = [
+  { en: 'Auckland, New Zealand', zh: '奥克兰，新西兰', latDeg: -36.8485, lonDeg: 174.7633 },
+  { en: 'Sydney, Australia', zh: '悉尼，澳大利亚', latDeg: -33.8688, lonDeg: 151.2093 },
+  { en: 'Singapore', zh: '新加坡', latDeg: 1.3521, lonDeg: 103.8198 },
+  { en: 'Tokyo, Japan', zh: '东京，日本', latDeg: 35.6762, lonDeg: 139.6503 },
+  { en: 'London, United Kingdom', zh: '伦敦，英国', latDeg: 51.5072, lonDeg: -0.1276 },
+  { en: 'New York, United States', zh: '纽约，美国', latDeg: 40.7128, lonDeg: -74.0060 },
 ];
 
 export default function ObserverPicker({ apiBase, location, onChange }: Props) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -37,7 +38,7 @@ export default function ObserverPicker({ apiBase, location, onChange }: Props) {
   const [latInput, setLatInput] = useState(String(location.latDeg));
   const [lonInput, setLonInput] = useState(String(location.lonDeg));
 
-  const shortLabel = useMemo(() => location.label.split(',').slice(0, 2).join(', '), [location.label]);
+  const shortLabel = useMemo(() => location.label.split(/[,，]/).slice(0, 2).join(language === 'zh' ? '，' : ', '), [location.label, language]);
 
   const apply = (next: ObserverLocation) => {
     onChange(next);
@@ -55,7 +56,7 @@ export default function ObserverPicker({ apiBase, location, onChange }: Props) {
     setSearching(true);
     setMessage('');
     try {
-      const response = await fetch(`${apiBase}/api/geocode?q=${encodeURIComponent(q)}`);
+      const response = await fetch(`${apiBase}/api/geocode?q=${encodeURIComponent(q)}&lang=${language}`);
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || t('Search failed'));
       setResults(body.results || []);
@@ -79,6 +80,7 @@ export default function ObserverPicker({ apiBase, location, onChange }: Props) {
           label: t('Current device location'),
           latDeg: position.coords.latitude,
           lonDeg: position.coords.longitude,
+          locale: 'neutral',
         });
       },
       error => setMessage(error.message || t('Location permission was not granted.')),
@@ -94,7 +96,7 @@ export default function ObserverPicker({ apiBase, location, onChange }: Props) {
       setMessage(t('Latitude must be −90…90 and longitude −180…180.'));
       return;
     }
-    apply({ label: `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`, latDeg: lat, lonDeg: lon });
+    apply({ label: `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`, latDeg: lat, lonDeg: lon, locale: 'neutral' });
   };
 
   return (
@@ -121,7 +123,7 @@ export default function ObserverPicker({ apiBase, location, onChange }: Props) {
         {results.length > 0 && (
           <div className="place-results">
             {results.map(result => (
-              <button key={`${result.latDeg}-${result.lonDeg}`} type="button" onClick={() => apply(result)}>
+              <button key={`${result.latDeg}-${result.lonDeg}`} type="button" onClick={() => apply({ ...result, locale: language })}>
                 <strong>{result.label}</strong>
                 <small>{result.latDeg.toFixed(4)}°, {result.lonDeg.toFixed(4)}°</small>
               </button>
@@ -140,9 +142,18 @@ export default function ObserverPicker({ apiBase, location, onChange }: Props) {
       </div>
 
       <div className="observer-presets">
-        {presets.map(preset => (
-          <button key={preset.label} type="button" onClick={() => apply(preset)}>{preset.label.split(',')[0]}</button>
-        ))}
+        {presets.map(preset => {
+          const label = language === 'zh' ? preset.zh : preset.en;
+          return (
+            <button
+              key={preset.en}
+              type="button"
+              onClick={() => apply({ label, latDeg: preset.latDeg, lonDeg: preset.lonDeg, locale: language })}
+            >
+              {(language === 'zh' ? preset.zh.split('，')[0] : preset.en.split(',')[0])}
+            </button>
+          );
+        })}
       </div>
 
       {message && <p className="observer-message">{message}</p>}
