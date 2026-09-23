@@ -1,199 +1,143 @@
-import { useEffect, useRef, useState } from 'react';
 import type { SatelliteLink } from '../types';
 
-type Props = {
-  satellites: SatelliteLink[];
-  selectedNoradId?: string;
+type TrackPoint = {
+  azimuthDeg: number;
+  elevationDeg: number;
+  seconds: number;
 };
 
-const WIDTH = 1040;
-const HEIGHT = 640;
-const GROUND_X = 612;
-const GROUND_Y = 468;
-const FRAME_MS = 1050;
-const EARTH_IMAGE = '/earth/airglow-australia.jpg';
+type Props = {
+  current?: SatelliteLink;
+  track: TrackPoint[];
+};
 
-function projectSatellite(satellite: SatelliteLink) {
-  const az = satellite.azimuthDeg / 360;
-  const el = Math.max(0, Math.min(90, satellite.elevationDeg)) / 90;
+const SIZE = 760;
+const C = SIZE / 2;
+const R = 300;
+
+function project(azimuthDeg: number, elevationDeg: number) {
+  const radius = ((90 - Math.max(0, Math.min(90, elevationDeg))) / 90) * R;
+  const angle = (azimuthDeg - 90) * Math.PI / 180;
   return {
-    x: 92 + az * (WIDTH - 184),
-    y: 278 - Math.pow(el, .72) * 194,
+    x: C + radius * Math.cos(angle),
+    y: C + radius * Math.sin(angle),
   };
 }
 
-function signalTone(snr: number) {
-  if (snr >= 12) return 'excellent';
-  if (snr >= 6) return 'good';
-  if (snr >= 2) return 'fair';
-  return 'weak';
+function compassLabel(azimuth: number) {
+  const directions = ['N','NE','E','SE','S','SW','W','NW'];
+  return directions[Math.round((azimuth % 360) / 45) % 8];
 }
 
-function lerp(from: number, to: number, alpha: number) {
-  return from + (to - from) * alpha;
-}
-
-function lerpAngle(from: number, to: number, alpha: number) {
-  const delta = ((to - from + 540) % 360) - 180;
-  return (from + delta * alpha + 360) % 360;
-}
-
-function interpolate(from: SatelliteLink | undefined, to: SatelliteLink, alpha: number): SatelliteLink {
-  if (!from) return to;
-  return {
-    ...to,
-    azimuthDeg: lerpAngle(from.azimuthDeg, to.azimuthDeg, alpha),
-    elevationDeg: lerp(from.elevationDeg, to.elevationDeg, alpha),
-    rangeKm: lerp(from.rangeKm, to.rangeKm, alpha),
-    snrDb: lerp(from.snrDb, to.snrDb, alpha),
-    subLatDeg: lerp(from.subLatDeg, to.subLatDeg, alpha),
-    subLonDeg: lerpAngle(from.subLonDeg, to.subLonDeg, alpha),
-    altitudeKm: lerp(from.altitudeKm, to.altitudeKm, alpha),
-  };
-}
-
-function useSmoothSatellites(target: SatelliteLink[]) {
-  const [display, setDisplay] = useState(target);
-  const displayRef = useRef(target);
-  const previousRef = useRef(target);
-  const targetRef = useRef(target);
-  const startRef = useRef(performance.now());
-  const frameRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    previousRef.current = displayRef.current;
-    targetRef.current = target;
-    startRef.current = performance.now();
-    if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
-
-    const tick = (timestamp: number) => {
-      const alpha = Math.min(1, (timestamp - startRef.current) / FRAME_MS);
-      const previousById = new Map(previousRef.current.map(satellite => [satellite.noradId, satellite]));
-      const next = targetRef.current.map(satellite => interpolate(previousById.get(satellite.noradId), satellite, alpha));
-      displayRef.current = next;
-      setDisplay(next);
-      if (alpha < 1) frameRef.current = requestAnimationFrame(tick);
-    };
-
-    frameRef.current = requestAnimationFrame(tick);
-    return () => {
-      if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
-    };
-  }, [target]);
-
-  return display;
-}
-
-function SatelliteGlyph({ active, tone }: { active: boolean; tone: string }) {
-  const scale = active ? 1.18 : .78;
-  return (
-    <g transform={`scale(${scale})`} className={`orbital-satellite ${tone} ${active ? 'active' : ''}`}>
-      {active && <circle r="27" className="satellite-halo" />}
-      <rect x="-9" y="-8" width="18" height="16" rx="4" className="satellite-body" />
-      <rect x="-38" y="-7" width="24" height="14" rx="2" className="solar-panel" />
-      <rect x="14" y="-7" width="24" height="14" rx="2" className="solar-panel" />
-      <line x1="-14" y1="0" x2="-9" y2="0" className="satellite-arm" />
-      <line x1="9" y1="0" x2="14" y2="0" className="satellite-arm" />
-      <path d="M -5 -8 L 0 -18 L 5 -8" className="satellite-antenna" />
-      <circle cx="0" cy="0" r="2.2" className="satellite-sensor" />
-    </g>
-  );
-}
-
-export default function SkyPlot({ satellites, selectedNoradId }: Props) {
-  const smoothSatellites = useSmoothSatellites(satellites.slice(0, 16));
-  const active = smoothSatellites.find(satellite => satellite.noradId === selectedNoradId);
-  const activePoint = active ? projectSatellite(active) : null;
+export default function SkyPlot({ current, track }: Props) {
+  const currentPoint = current ? project(current.azimuthDeg, current.elevationDeg) : null;
+  const visibleTrack = track.filter(point => point.elevationDeg >= 0);
+  const path = visibleTrack.map(point => {
+    const p = project(point.azimuthDeg, point.elevationDeg);
+    return `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
+  }).join(' ');
 
   return (
-    <section className="hero-earth-panel">
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="hero-earth-svg" role="img" aria-label="Live satellite link over Australia and New Zealand">
-        <defs>
-          <linearGradient id="heroShade" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#01060b" stopOpacity=".14" />
-            <stop offset="55%" stopColor="#02070d" stopOpacity=".03" />
-            <stop offset="100%" stopColor="#01060b" stopOpacity=".62" />
-          </linearGradient>
-          <linearGradient id="beamGradient" x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0%" stopColor="#47f7d0" stopOpacity=".96" />
-            <stop offset="100%" stopColor="#58e7ff" stopOpacity=".08" />
-          </linearGradient>
-          <filter id="beamGlow">
-            <feGaussianBlur stdDeviation="6" result="blur" />
-            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
-          <filter id="pointGlow"><feGaussianBlur stdDeviation="5" /></filter>
-        </defs>
-
-        <image href={EARTH_IMAGE} x="0" y="0" width={WIDTH} height={HEIGHT} preserveAspectRatio="xMidYMid slice" className="earth-photo" />
-        <rect width={WIDTH} height={HEIGHT} fill="url(#heroShade)" />
-        <rect width={WIDTH} height={HEIGHT} className="hero-vignette" />
-
-        <g className="hero-heading">
-          <text x="28" y="40">REAL-TIME VIEW</text>
-          <text x="28" y="60" className="sub">Low Earth Orbit · Auckland Ground Segment</text>
-        </g>
-
-        <path d="M -30 204 Q 290 68 575 196 T 1060 160" className="orbit-path hero-orbit-one" />
-        <path d="M -20 258 Q 294 120 602 240 T 1070 218" className="orbit-path hero-orbit-two" />
-
-        {activePoint && (
-          <>
-            <polygon
-              points={`${GROUND_X - 8},${GROUND_Y + 2} ${GROUND_X + 8},${GROUND_Y + 2} ${activePoint.x + 7},${activePoint.y + 8} ${activePoint.x - 7},${activePoint.y + 8}`}
-              fill="url(#beamGradient)"
-              className="hero-uplink-beam"
-              filter="url(#beamGlow)"
-            />
-            <line x1={GROUND_X} y1={GROUND_Y} x2={activePoint.x} y2={activePoint.y} className="hero-uplink-center" />
-          </>
+    <section className="panel sky-position-panel">
+      <div className="panel-title-row">
+        <div>
+          <p className="eyebrow">SKY POSITION FROM AUCKLAND</p>
+          <h2>{current ? current.name : 'Waiting for a visible satellite'}</h2>
+        </div>
+        {current && (
+          <span className="sky-bearing">
+            {compassLabel(current.azimuthDeg)} · {current.azimuthDeg.toFixed(0)}° azimuth
+          </span>
         )}
+      </div>
 
-        {smoothSatellites.map((satellite, index) => {
-          const point = projectSatellite(satellite);
-          const isActive = satellite.noradId === selectedNoradId;
-          return (
-            <g key={satellite.noradId} transform={`translate(${point.x} ${point.y})`} opacity={index > 9 && !isActive ? .45 : 1}>
-              <SatelliteGlyph active={isActive} tone={signalTone(satellite.snrDb)} />
-              {isActive && (
-                <g className="hero-sat-label">
-                  <text x="30" y="-15">{satellite.name}</text>
-                  <text x="30" y="2" className="sub">{satellite.altitudeKm.toFixed(0)} km · {satellite.elevationDeg.toFixed(1)}° EL</text>
-                </g>
-              )}
+      <div className="sky-layout">
+        <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="sky-position-svg" role="img" aria-label="Satellite position in Auckland sky">
+          <defs>
+            <radialGradient id="skyDome" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#0e3142" />
+              <stop offset="58%" stopColor="#071a25" />
+              <stop offset="100%" stopColor="#02090f" />
+            </radialGradient>
+            <filter id="skyGlow">
+              <feGaussianBlur stdDeviation="7" result="blur" />
+              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+          </defs>
+
+          <circle cx={C} cy={C} r={R + 28} className="sky-atmosphere" />
+          <circle cx={C} cy={C} r={R} fill="url(#skyDome)" className="sky-horizon" />
+
+          {[30,60].map(elevation => {
+            const radius = ((90 - elevation) / 90) * R;
+            return (
+              <g key={elevation}>
+                <circle cx={C} cy={C} r={radius} className="elevation-ring" />
+                <text x={C + 8} y={C - radius + 18} className="elevation-label">{elevation}° EL</text>
+              </g>
+            );
+          })}
+
+          {[0,45,90,135,180,225,270,315].map(az => {
+            const outer = project(az, 0);
+            const inner = project(az, 90);
+            return <line key={az} x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y} className="azimuth-line" />;
+          })}
+
+          <text x={C} y={48} textAnchor="middle" className="compass-major">N</text>
+          <text x={SIZE - 48} y={C + 6} textAnchor="middle" className="compass-major">E</text>
+          <text x={C} y={SIZE - 35} textAnchor="middle" className="compass-major">S</text>
+          <text x={48} y={C + 6} textAnchor="middle" className="compass-major">W</text>
+          <text x={C} y={C + 5} textAnchor="middle" className="zenith-label">ZENITH · 90°</text>
+
+          {path && <polyline points={path} className="future-sky-track" />}
+
+          {visibleTrack.map((point, index) => {
+            if (index % 2 !== 0) return null;
+            const p = project(point.azimuthDeg, point.elevationDeg);
+            return <circle key={point.seconds} cx={p.x} cy={p.y} r="3" className="future-track-dot" />;
+          })}
+
+          {currentPoint && current && (
+            <g transform={`translate(${currentPoint.x} ${currentPoint.y})`}>
+              <circle r="30" className="active-sky-halo" filter="url(#skyGlow)" />
+              <circle r="11" className="active-sky-dot" />
+              <line x1="0" y1="0" x2="42" y2="-34" className="active-label-line" />
+              <g transform="translate(48 -56)" className="active-sky-label">
+                <rect width="205" height="66" rx="10" />
+                <text x="12" y="23">{current.name}</text>
+                <text x="12" y="44" className="sub">{current.elevationDeg.toFixed(1)}° elevation · {current.azimuthDeg.toFixed(0)}° azimuth</text>
+              </g>
             </g>
-          );
-        })}
+          )}
+        </svg>
 
-        <g className="hero-ground-point" transform={`translate(${GROUND_X} ${GROUND_Y})`}>
-          <circle r="16" className="hero-ground-glow" filter="url(#pointGlow)" />
-          <circle r="8" className="hero-ground-ring" />
-          <circle r="3.2" className="hero-ground-core" />
-          <text x="20" y="-5">Auckland</text>
-          <text x="20" y="12" className="sub">New Zealand</text>
-        </g>
-
-        <text x="126" y="405" className="region-label">AUSTRALIA</text>
-        <text x="463" y="430" className="sea-label">Tasman Sea</text>
-
-        <g className="hero-story-card">
-          <rect x="24" y="500" width="318" height="96" rx="14" />
-          <circle cx="62" cy="548" r="22" className="story-orbit" />
-          <path d="M 45 548 Q 62 530 79 548 Q 62 566 45 548" className="story-orbit-line" />
-          <text x="98" y="535">A MORE CONNECTED PLANET</text>
-          <text x="98" y="556" className="sub">Live geometry, RF link budget and</text>
-          <text x="98" y="573" className="sub">handover telemetry from Auckland.</text>
-        </g>
-
-        <g className="hero-stats">
-          <text x="786" y="562" className="value">{satellites.length}</text>
-          <text x="786" y="581" className="label">VISIBLE LINKS</text>
-          <text x="900" y="562" className="value">{active ? active.snrDb.toFixed(1) : '—'}</text>
-          <text x="900" y="581" className="label">SNR dB</text>
-        </g>
-      </svg>
-
-      <div className="hero-credit">Earth imagery: NASA / ISS · live orbital overlays by LEO Link Lab</div>
+        <div className="sky-explainer">
+          <div>
+            <span>HOW TO READ THIS</span>
+            <strong>Edge = horizon</strong>
+            <p>A satellite on the outer circle is just above the horizon.</p>
+          </div>
+          <div>
+            <span>HEIGHT IN THE SKY</span>
+            <strong>Center = directly overhead</strong>
+            <p>Higher elevation means a shorter, usually stronger link.</p>
+          </div>
+          <div>
+            <span>DIRECTION</span>
+            <strong>N / E / S / W = azimuth</strong>
+            <p>The cyan trail is the predicted path for the next few minutes.</p>
+          </div>
+          {current && (
+            <div className="sky-now-card">
+              <span>NOW</span>
+              <strong>{current.elevationDeg.toFixed(1)}° elevation</strong>
+              <b>{current.azimuthDeg.toFixed(0)}° {compassLabel(current.azimuthDeg)}</b>
+              <small>{current.rangeKm.toFixed(0)} km slant range</small>
+            </div>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
