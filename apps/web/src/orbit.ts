@@ -11,13 +11,19 @@ function geometry(record: OmmRecord, observer: { latitude: number; longitude: nu
   const satrec = satellite.json2satrec(record as any);
   const pv = satellite.propagate(satrec, date);
   if (!pv) return null;
+
   const gmst = satellite.gstime(date);
   const ecf = satellite.eciToEcf(pv.position, gmst);
   const look = satellite.ecfToLookAngles(observer, ecf);
+  const geodetic = satellite.eciToGeodetic(pv.position, gmst);
+
   return {
     azimuthDeg: (toDeg(look.azimuth) + 360) % 360,
     elevationDeg: toDeg(look.elevation),
     rangeKm: look.rangeSat,
+    subLatDeg: toDeg(geodetic.latitude),
+    subLonDeg: toDeg(geodetic.longitude),
+    altitudeKm: geodetic.height,
   };
 }
 
@@ -27,8 +33,10 @@ export function computeLink(record: OmmRecord, station: { latDeg: number; lonDeg
     longitude: satellite.degreesToRadians(station.lonDeg),
     height: 0,
   };
+
   const now = geometry(record, observer, date);
   if (!now) return null;
+
   const before = geometry(record, observer, new Date(date.getTime() - 1000));
   const after = geometry(record, observer, new Date(date.getTime() + 1000));
   const rangeRateMps = before && after ? (after.rangeKm - before.rangeKm) * 500 : 0;
@@ -36,6 +44,7 @@ export function computeLink(record: OmmRecord, station: { latDeg: number; lonDeg
   const received = receivedPowerDbm(radio.txPowerDbm, radio.txGainDbi, radio.rxGainDbi, pathLoss, radio.otherLossDb);
   const noise = noiseFloorDbm(radio.bandwidthMHz * 1e6, radio.noiseFigureDb);
   const snr = snrDb(received, noise);
+
   return {
     name: String(record.OBJECT_NAME || 'STARLINK'),
     noradId: String(record.NORAD_CAT_ID || '—'),
