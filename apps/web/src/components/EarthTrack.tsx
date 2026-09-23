@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { PointerEvent as ReactPointerEvent } from 'react';
+import * as maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import type { SatelliteLink } from '../types';
 
 type TrackPoint = {
@@ -15,280 +16,337 @@ type Props = {
   track: TrackPoint[];
 };
 
-type GeoPoint = [number, number];
+type ViewMode = 'observer' | 'satellite' | 'globe';
 
-const WIDTH = 720;
-const HEIGHT = 430;
-const CX = 360;
-const CY = 215;
-const R = 166;
-const DEG = Math.PI / 180;
-const EARTH_TEXTURE = '/earth/earth-at-night.jpg';
-
-const continents: GeoPoint[][] = [
-  [[-168,72],[-145,68],[-127,56],[-124,42],[-117,32],[-99,19],[-82,25],[-80,36],[-70,45],[-60,53],[-76,63],[-105,72],[-140,70],[-168,72]],
-  [[-81,12],[-67,7],[-52,-4],[-44,-22],[-53,-36],[-66,-55],[-74,-41],[-79,-16],[-81,12]],
-  [[-10,36],[4,44],[20,40],[33,31],[42,14],[50,2],[42,-15],[30,-30],[18,-35],[7,-25],[-5,-4],[-15,17],[-10,36]],
-  [[-10,36],[8,46],[28,54],[45,58],[65,67],[92,72],[120,63],[145,55],[162,45],[151,30],[126,20],[111,8],[95,18],[76,24],[60,31],[45,35],[31,41],[16,39],[-10,36]],
-  [[111,-11],[129,-12],[145,-21],[154,-34],[142,-43],[124,-34],[115,-24],[111,-11]],
-  [[166,-34],[176,-39],[179,-46],[170,-47],[166,-42],[166,-34]],
-  [[-53,60],[-43,68],[-35,74],[-46,81],[-61,80],[-70,72],[-53,60]],
-];
-
-function normalizeLon(value: number) {
-  let result = value;
-  while (result > 180) result -= 360;
-  while (result < -180) result += 360;
-  return result;
-}
-
-function project(latDeg: number, lonDeg: number, centerLatDeg: number, centerLonDeg: number) {
-  const phi = latDeg * DEG;
-  const lambda = lonDeg * DEG;
-  const phi0 = centerLatDeg * DEG;
-  const lambda0 = centerLonDeg * DEG;
-  const dLambda = lambda - lambda0;
-
-  const cosC = Math.sin(phi0) * Math.sin(phi) + Math.cos(phi0) * Math.cos(phi) * Math.cos(dLambda);
-  const x = CX + R * Math.cos(phi) * Math.sin(dLambda);
-  const y = CY - R * (Math.cos(phi0) * Math.sin(phi) - Math.sin(phi0) * Math.cos(phi) * Math.cos(dLambda));
-
-  return { x, y, visible: cosC >= 0, cosC };
-}
-
-function visibleSegments(points: GeoPoint[], centerLat: number, centerLon: number) {
-  const segments: string[] = [];
-  let current: string[] = [];
-
-  for (const [lon, lat] of points) {
-    const point = project(lat, lon, centerLat, centerLon);
-    if (point.visible) {
-      current.push(`${point.x.toFixed(1)},${point.y.toFixed(1)}`);
-    } else if (current.length > 1) {
-      segments.push(current.join(' '));
-      current = [];
-    } else {
-      current = [];
-    }
-  }
-
-  if (current.length > 1) segments.push(current.join(' '));
-  return segments;
-}
-
-function graticuleLatitude(lat: number) {
-  return Array.from({ length: 73 }, (_, i): GeoPoint => [-180 + i * 5, lat]);
-}
-
-function graticuleLongitude(lon: number) {
-  return Array.from({ length: 37 }, (_, i): GeoPoint => [lon, -90 + i * 5]);
-}
+const SATELLITE_TILES = 'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/g/{z}/{y}/{x}.jpg';
+const BASE_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
+const TERRAIN_TILEJSON = 'https://tiles.mapterhorn.com/tilejson.json';
 
 function formatLat(value: number) {
-  return `${Math.abs(value).toFixed(2)}°${value >= 0 ? 'N' : 'S'}`;
+  return `${Math.abs(value).toFixed(4)}°${value >= 0 ? 'N' : 'S'}`;
 }
 
 function formatLon(value: number) {
-  return `${Math.abs(value).toFixed(2)}°${value >= 0 ? 'E' : 'W'}`;
+  return `${Math.abs(value).toFixed(4)}°${value >= 0 ? 'E' : 'W'}`;
+}
+
+function makeMarker(kind: 'observer' | 'satellite', label: string) {
+  const root = document.createElement('div');
+  root.className = `earth-map-marker ${kind}`;
+
+  const dot = document.createElement('i');
+  const text = document.createElement('span');
+  text.textContent = label;
+
+  root.append(dot, text);
+  return root;
+}
+
+function setMarkerLabel(marker: maplibregl.Marker | null, label: string) {
+  const element = marker?.getElement();
+  const labelNode = element?.querySelector('span');
+  if (labelNode) labelNode.textContent = label;
+}
+
+function splitTrack(points: TrackPoint[]) {
+  const segments: TrackPoint[][] = [];
+  let current: TrackPoint[] = [];
+
+  for (const point of points) {
+    const previous = current.at(-1);
+    if (previous && (Math.abs(point.lonDeg - previous.lonDeg) > 180 || Math.sign(point.offsetMin) !== Math.sign(previous.offsetMin))) {
+      if (current.length > 1) segments.push(current);
+      current = [];
+    }
+    current.push(point);
+  }
+
+  if (current.length > 1) segments.push(current);
+  return segments;
+}
+
+function trackGeoJson(track: TrackPoint[]) {
+  const features = splitTrack(track).map((segment, index) => ({
+    type: 'Feature',
+    properties: {
+      kind: segment.some(point => point.offsetMin > 0) ? 'future' : 'past',
+      id: index,
+    },
+    geometry: {
+      type: 'LineString',
+      coordinates: segment.map(point => [point.lonDeg, point.latDeg]),
+    },
+  }));
+
+  return {
+    type: 'FeatureCollection',
+    features,
+  };
 }
 
 export default function EarthTrack({ current, station, stationLabel, track }: Props) {
-  const [centerLon, setCenterLon] = useState(current?.subLonDeg ?? 165);
-  const [centerLat, setCenterLat] = useState(current?.subLatDeg ?? -25);
-  const [follow, setFollow] = useState(true);
-  const dragRef = useRef<{ x: number; y: number; lon: number; lat: number } | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const observerMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const satelliteMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('observer');
+  const [mapReady, setMapReady] = useState(false);
+
+  const observerName = useMemo(() => stationLabel.split(',').slice(0, 2).join(', '), [stationLabel]);
 
   useEffect(() => {
-    if (!current || !follow) return;
-    setCenterLon(previous => {
-      const delta = normalizeLon(current.subLonDeg - previous);
-      return normalizeLon(previous + delta * .38);
+    if (!containerRef.current || mapRef.current) return;
+
+    const map = new maplibregl.Map({
+      container: containerRef.current,
+      style: BASE_STYLE,
+      center: [station.lonDeg, station.latDeg],
+      zoom: 1.7,
+      pitch: 0,
+      bearing: 0,
+      maxPitch: 85,
+      attributionControl: false,
     });
-    setCenterLat(previous => previous + (current.subLatDeg - previous) * .38);
-  }, [current?.subLonDeg, current?.subLatDeg, follow]);
 
-  const graticules = useMemo(() => {
-    const latitudeLines = [-60,-30,0,30,60].flatMap(lat => visibleSegments(graticuleLatitude(lat), centerLat, centerLon));
-    const longitudeLines = [-150,-120,-90,-60,-30,0,30,60,90,120,150,180].flatMap(lon => visibleSegments(graticuleLongitude(lon), centerLat, centerLon));
-    return [...latitudeLines, ...longitudeLines];
-  }, [centerLat, centerLon]);
+    mapRef.current = map;
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+    map.addControl(new maplibregl.GlobeControl(), 'top-right');
+    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 
-  const coastlines = useMemo(
-    () => continents.flatMap(continent => visibleSegments(continent, centerLat, centerLon)),
-    [centerLat, centerLon],
-  );
+    observerMarkerRef.current = new maplibregl.Marker({
+      element: makeMarker('observer', observerName),
+      anchor: 'bottom',
+    }).setLngLat([station.lonDeg, station.latDeg]).addTo(map);
 
-  const trackSegments = useMemo(() => {
-    const points: GeoPoint[] = track.map(point => [point.lonDeg, point.latDeg]);
-    return visibleSegments(points, centerLat, centerLon);
-  }, [track, centerLat, centerLon]);
-
-  const stationPoint = project(station.latDeg, station.lonDeg, centerLat, centerLon);
-  const subpoint = current ? project(current.subLatDeg, current.subLonDeg, centerLat, centerLon) : null;
-
-  const satellitePoint = subpoint && subpoint.visible ? (() => {
-    const dx = subpoint.x - CX;
-    const dy = subpoint.y - CY;
-    const length = Math.max(Math.hypot(dx, dy), 1);
-    const radial = 22 + Math.min(24, (current?.altitudeKm ?? 550) / 30);
-    return {
-      x: subpoint.x + dx / length * radial,
-      y: subpoint.y + dy / length * radial,
-    };
-  })() : null;
-
-  const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
-    event.currentTarget.setPointerCapture(event.pointerId);
-    dragRef.current = { x: event.clientX, y: event.clientY, lon: centerLon, lat: centerLat };
-    setFollow(false);
-  };
-
-  const onPointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (!dragRef.current) return;
-    const dx = event.clientX - dragRef.current.x;
-    const dy = event.clientY - dragRef.current.y;
-    setCenterLon(normalizeLon(dragRef.current.lon - dx * .42));
-    setCenterLat(Math.max(-75, Math.min(75, dragRef.current.lat + dy * .32)));
-  };
-
-  const onPointerUp = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    dragRef.current = null;
-  };
-
-  const refocus = () => {
     if (current) {
-      setCenterLon(current.subLonDeg);
-      setCenterLat(current.subLatDeg);
-    } else {
-      setCenterLon(165);
-      setCenterLat(-25);
+      satelliteMarkerRef.current = new maplibregl.Marker({
+        element: makeMarker('satellite', current.name),
+        anchor: 'bottom',
+      }).setLngLat([current.subLonDeg, current.subLatDeg]).addTo(map);
     }
-    setFollow(true);
+
+    map.on('load', () => {
+      map.setProjection({ type: 'globe' });
+
+      if (!map.getSource('satellite-imagery')) {
+        map.addSource('satellite-imagery', {
+          type: 'raster',
+          tiles: [SATELLITE_TILES],
+          tileSize: 256,
+          attribution: 'Satellite imagery: EOX Sentinel-2 cloudless',
+          maxzoom: 14,
+        });
+
+        const layers = map.getStyle().layers || [];
+        const firstNonFill = layers.find(layer => layer.type !== 'background' && layer.type !== 'fill')?.id;
+        map.addLayer({
+          id: 'satellite-imagery-layer',
+          type: 'raster',
+          source: 'satellite-imagery',
+          paint: {
+            'raster-opacity': 0.92,
+            'raster-saturation': -0.05,
+            'raster-contrast': 0.08,
+          },
+        }, firstNonFill);
+      }
+
+      if (!map.getSource('terrain-source')) {
+        map.addSource('terrain-source', {
+          type: 'raster-dem',
+          url: TERRAIN_TILEJSON,
+        });
+        map.setTerrain({ source: 'terrain-source', exaggeration: 1 });
+        map.addControl(new maplibregl.TerrainControl({ source: 'terrain-source', exaggeration: 1 }), 'top-right');
+      }
+
+      if (!map.getSource('ground-track')) {
+        map.addSource('ground-track', {
+          type: 'geojson',
+          data: trackGeoJson(track) as any,
+        });
+        map.addLayer({
+          id: 'ground-track-line',
+          type: 'line',
+          source: 'ground-track',
+          paint: {
+            'line-color': [
+              'match',
+              ['get', 'kind'],
+              'future', '#63e8ff',
+              '#91a0a8',
+            ],
+            'line-width': [
+              'match',
+              ['get', 'kind'],
+              'future', 4,
+              2,
+            ],
+            'line-opacity': [
+              'match',
+              ['get', 'kind'],
+              'future', 0.95,
+              0.65,
+            ],
+            'line-dasharray': [2, 1.5],
+          },
+        });
+      }
+
+      setMapReady(true);
+      map.flyTo({
+        center: [station.lonDeg, station.latDeg],
+        zoom: 9,
+        pitch: 58,
+        bearing: 0,
+        duration: 1500,
+        essential: true,
+      });
+    });
+
+    return () => {
+      observerMarkerRef.current?.remove();
+      satelliteMarkerRef.current?.remove();
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    observerMarkerRef.current?.setLngLat([station.lonDeg, station.latDeg]);
+    setMarkerLabel(observerMarkerRef.current, observerName);
+
+    setViewMode('observer');
+    if (mapReady) {
+      map.flyTo({
+        center: [station.lonDeg, station.latDeg],
+        zoom: 9,
+        pitch: 58,
+        bearing: 0,
+        duration: 1400,
+        essential: true,
+      });
+    }
+  }, [station.latDeg, station.lonDeg, observerName, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (!current) {
+      satelliteMarkerRef.current?.remove();
+      satelliteMarkerRef.current = null;
+      return;
+    }
+
+    if (!satelliteMarkerRef.current) {
+      satelliteMarkerRef.current = new maplibregl.Marker({
+        element: makeMarker('satellite', current.name),
+        anchor: 'bottom',
+      }).setLngLat([current.subLonDeg, current.subLatDeg]).addTo(map);
+    } else {
+      satelliteMarkerRef.current.setLngLat([current.subLonDeg, current.subLatDeg]);
+      setMarkerLabel(satelliteMarkerRef.current, current.name);
+    }
+  }, [current?.name, current?.subLatDeg, current?.subLonDeg]);
+
+  useEffect(() => {
+    const source = mapRef.current?.getSource('ground-track') as maplibregl.GeoJSONSource | undefined;
+    source?.setData(trackGeoJson(track) as any);
+  }, [track]);
+
+  const flyObserver = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    setViewMode('observer');
+    map.flyTo({
+      center: [station.lonDeg, station.latDeg],
+      zoom: 10.5,
+      pitch: 62,
+      bearing: 0,
+      duration: 1500,
+      essential: true,
+    });
+  };
+
+  const flySatellite = () => {
+    const map = mapRef.current;
+    if (!map || !current) return;
+    setViewMode('satellite');
+    map.flyTo({
+      center: [current.subLonDeg, current.subLatDeg],
+      zoom: 7.2,
+      pitch: 50,
+      bearing: 0,
+      duration: 1500,
+      essential: true,
+    });
+  };
+
+  const flyGlobe = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    setViewMode('globe');
+    map.flyTo({
+      center: current ? [current.subLonDeg, current.subLatDeg] : [station.lonDeg, station.latDeg],
+      zoom: 1.55,
+      pitch: 0,
+      bearing: 0,
+      duration: 1500,
+      essential: true,
+    });
   };
 
   return (
-    <section className="panel globe-panel">
-      <div className="panel-title-row">
+    <section className="panel earth-view-panel">
+      <div className="panel-title-row earth-view-header">
         <div>
-          <p className="eyebrow">3D GLOBE / GROUND TRACK</p>
-          <h2>Where is {current?.name ?? 'the satellite'}?</h2>
+          <p className="eyebrow">EARTH VIEW / GROUND TRACK</p>
+          <h2>Real geography, live satellite position</h2>
+          <p className="earth-view-copy">
+            Zoom from the globe down to the selected observer or the satellite's ground point.
+          </p>
         </div>
-        <button className={`globe-follow ${follow ? 'active' : ''}`} onClick={refocus}>
-          {follow ? 'FOLLOWING SAT' : 'FOLLOW SAT'}
-        </button>
+
+        <div className="earth-view-actions">
+          <button className={viewMode === 'observer' ? 'active' : ''} type="button" onClick={flyObserver}>
+            Observer
+          </button>
+          <button className={viewMode === 'satellite' ? 'active' : ''} type="button" onClick={flySatellite} disabled={!current}>
+            Satellite
+          </button>
+          <button className={viewMode === 'globe' ? 'active' : ''} type="button" onClick={flyGlobe}>
+            Globe
+          </button>
+        </div>
       </div>
 
-      <div className="globe-wrap">
-        <svg
-          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-          className="globe-svg"
-          role="img"
-          aria-label="Rotatable globe with satellite ground track"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-        >
-          <defs>
-            <radialGradient id="globeOcean" cx="34%" cy="26%" r="78%">
-              <stop offset="0%" stopColor="#153d51" />
-              <stop offset="48%" stopColor="#092536" />
-              <stop offset="100%" stopColor="#031019" />
-            </radialGradient>
-            <radialGradient id="globeAtmosphere" cx="50%" cy="50%" r="50%">
-              <stop offset="72%" stopColor="#59ddff" stopOpacity="0" />
-              <stop offset="88%" stopColor="#59ddff" stopOpacity=".12" />
-              <stop offset="100%" stopColor="#59ddff" stopOpacity=".45" />
-            </radialGradient>
-            <clipPath id="globeClip">
-              <circle cx={CX} cy={CY} r={R} />
-            </clipPath>
-            <filter id="globeGlow">
-              <feGaussianBlur stdDeviation="9" />
-            </filter>
-          </defs>
+      <div className="real-earth-map" ref={containerRef} />
 
-          <circle cx={CX} cy={CY} r={R + 13} fill="#55dfff" opacity=".13" filter="url(#globeGlow)" />
-          <circle cx={CX} cy={CY} r={R + 8} fill="url(#globeAtmosphere)" />
-          <circle cx={CX} cy={CY} r={R} fill="url(#globeOcean)" className="globe-sphere" />
-          <image
-            href={EARTH_TEXTURE}
-            x={CX - R}
-            y={CY - R}
-            width={R * 2}
-            height={R * 2}
-            preserveAspectRatio="xMidYMid slice"
-            clipPath="url(#globeClip)"
-            className="globe-texture"
-          />
-          <circle cx={CX} cy={CY} r={R} className="globe-night-shade" />
-
-          {graticules.map((points, index) => (
-            <polyline key={`grid-${index}`} points={points} className="globe-grid" />
-          ))}
-
-          {coastlines.map((points, index) => (
-            <polyline key={`coast-${index}`} points={points} className="globe-coast" />
-          ))}
-
-          {trackSegments.map((points, index) => (
-            <polyline key={`track-${index}`} points={points} className="globe-track-line" />
-          ))}
-
-          {stationPoint.visible && (
-            <g transform={`translate(${stationPoint.x} ${stationPoint.y})`} className="globe-station">
-              <circle r="10" className="globe-station-ring" />
-              <circle r="3.2" className="globe-station-core" />
-              <text x="13" y="-8">{stationLabel.split(',')[0].toUpperCase()}</text>
-            </g>
-          )}
-
-          {subpoint?.visible && current && (
-            <>
-              <circle cx={subpoint.x} cy={subpoint.y} r="6" className="subpoint-dot" />
-              {satellitePoint && (
-                <>
-                  <line x1={subpoint.x} y1={subpoint.y} x2={satellitePoint.x} y2={satellitePoint.y} className="subpoint-beam" />
-                  <g transform={`translate(${satellitePoint.x} ${satellitePoint.y})`} className="globe-satellite">
-                    <circle r="18" className="globe-satellite-halo" />
-                    <rect x="-6" y="-5" width="12" height="10" rx="2" className="globe-sat-body" />
-                    <rect x="-22" y="-4" width="12" height="8" rx="1" className="globe-sat-panel" />
-                    <rect x="10" y="-4" width="12" height="8" rx="1" className="globe-sat-panel" />
-                    <text x="28" y="-8">{current.name}</text>
-                    <text x="28" y="7" className="sub">{current.altitudeKm.toFixed(0)} km altitude</text>
-                  </g>
-                </>
-              )}
-            </>
-          )}
-
-          <text x="26" y="31" className="globe-hint">DRAG TO ROTATE · ORTHOGRAPHIC EARTH VIEW</text>
-          <text x="26" y="49" className="globe-hint sub">cyan trail = ±10–30 min ground track</text>
-        </svg>
-      </div>
-
-      <div className="earth-location-readout">
+      <div className="earth-view-readout">
         <div>
-          <span>SUB-SATELLITE POINT</span>
+          <span>OBSERVER</span>
+          <strong>{observerName}</strong>
+          <small>{formatLat(station.latDeg)} · {formatLon(station.lonDeg)}</small>
+        </div>
+        <div>
+          <span>SATELLITE SUBPOINT</span>
           <strong>{current ? `${formatLat(current.subLatDeg)} · ${formatLon(current.subLonDeg)}` : '—'}</strong>
+          <small>{current ? `${current.altitudeKm.toFixed(1)} km orbital altitude` : 'No tracked satellite'}</small>
         </div>
         <div>
-          <span>ALTITUDE</span>
-          <strong>{current ? `${current.altitudeKm.toFixed(1)} km` : '—'}</strong>
-        </div>
-        <div>
-          <span>VIEW CENTER</span>
-          <strong>{formatLat(centerLat)} · {formatLon(centerLon)}</strong>
+          <span>GROUND TRACK</span>
+          <strong>Past + future path</strong>
+          <small>Grey = past · cyan = future</small>
         </div>
       </div>
 
-      <div className="track-key">
-        <span><i className="past" /> ground track</span>
-        <span><i className="station" /> {stationLabel.split(',')[0]}</span>
-        <span><i className="satellite" /> satellite + subpoint</span>
+      <div className="earth-view-note">
+        Satellite imagery base is a cloudless Sentinel-2 mosaic, not live photography. Observer position,
+        satellite subpoint and ground track are the live layers.
       </div>
     </section>
   );
