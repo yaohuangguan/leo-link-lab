@@ -44,7 +44,7 @@ npm run build
 npm run deploy:cloudflare
 ```
 
-Production: `https://leo-link-lab.719919153.workers.dev`
+Production: `https://leo-link-lab.nzs.workers.dev`
 
 ## Roadmap
 
