@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { computeLink } from './orbit';
 import SkyPlot from './components/SkyPlot';
+import EarthTrack from './components/EarthTrack';
 import Sparkline from './components/Sparkline';
 import HandoverPanel from './components/HandoverPanel';
 import PassTimeline from './components/PassTimeline';
@@ -64,7 +65,9 @@ export default function App() {
     () => best ? records.find(record => String(record.NORAD_CAT_ID ?? '') === best.noradId) : undefined,
     [records, best?.noradId],
   );
+
   const predictionTick = Math.floor(now.getTime() / 10_000);
+
   const passSamples = useMemo(() => {
     if (!activeRecord) return [];
     const start = predictionTick * 10_000;
@@ -73,6 +76,20 @@ export default function App() {
       const link = computeLink(activeRecord, station, radio, new Date(start + seconds * 1000));
       return { seconds, elevation: link?.elevationDeg ?? 0, snr: link?.snrDb ?? -99 };
     });
+  }, [activeRecord, radio, predictionTick]);
+
+  const earthTrack = useMemo(() => {
+    if (!activeRecord) return [];
+    const center = predictionTick * 10_000;
+    return Array.from({ length: 41 }, (_, index) => {
+      const offsetMin = index - 10;
+      const link = computeLink(activeRecord, station, radio, new Date(center + offsetMin * 60_000));
+      return link ? {
+        latDeg: link.subLatDeg,
+        lonDeg: link.subLonDeg,
+        offsetMin,
+      } : null;
+    }).filter((point): point is { latDeg: number; lonDeg: number; offsetMin: number } => point !== null);
   }, [activeRecord, radio, predictionTick]);
 
   const update = (key: keyof RadioConfig, value: number) => {
@@ -146,25 +163,29 @@ export default function App() {
 
                 <div className="link-route">
                   <div><span>GROUND</span><strong>Auckland</strong></div>
-                  <div className="route-beam"><i /><b>12 GHz</b><i /></div>
+                  <div className="route-beam"><i /><b>{radio.frequencyGHz} GHz</b><i /></div>
                   <div><span>SPACE</span><strong>{best.name}</strong></div>
                 </div>
 
                 <div className="link-detail-grid compact">
                   <Detail label="Range" value={`${fmt(best.rangeKm, 0)} km`} />
                   <Detail label="Azimuth" value={`${fmt(best.azimuthDeg, 0)}°`} />
+                  <Detail label="Altitude" value={`${fmt(best.altitudeKm, 0)} km`} />
                   <Detail label="Doppler" value={`${fmt(best.dopplerHz / 1000)} kHz`} />
                   <Detail label="Delay" value={`${fmt(best.delayMs, 2)} ms`} />
-                  <Detail label="Rx power" value={`${fmt(best.receivedPowerDbm, 1)} dBm`} />
                   <Detail label="FSPL" value={`${fmt(best.fsplDb, 1)} dB`} />
                 </div>
               </>
             ) : <p className="empty-state">No satellite currently clears the elevation mask.</p>}
           </section>
 
-          <PassTimeline samples={passSamples} minElevationDeg={radio.minElevationDeg} satelliteName={best?.name} />
-          <HandoverPanel current={best} candidate={candidate} />
+          <EarthTrack current={best} station={station} track={earthTrack} />
         </div>
+      </section>
+
+      <section className="ops-grid">
+        <PassTimeline samples={passSamples} minElevationDeg={radio.minElevationDeg} satelliteName={best?.name} />
+        <HandoverPanel current={best} candidate={candidate} />
       </section>
 
       <section className="trend-grid">
@@ -187,7 +208,7 @@ export default function App() {
               <div className="candidate-rank">{index === 0 ? 'LINK' : String(index + 1).padStart(2, '0')}</div>
               <div className="candidate-satellite"><i /><b /><i /></div>
               <strong>{satellite.name}</strong>
-              <span>{fmt(satellite.elevationDeg)}° elevation</span>
+              <span>{fmt(satellite.elevationDeg)}° elevation · {fmt(satellite.altitudeKm, 0)} km alt</span>
               <div className="candidate-snr"><b>{fmt(satellite.snrDb)}</b><small>dB SNR</small></div>
               <div className="candidate-meter"><i style={{ width: `${Math.max(4, Math.min(100, ((satellite.snrDb + 5) / 25) * 100))}%` }} /></div>
             </article>
@@ -207,7 +228,7 @@ export default function App() {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Satellite</th><th>Quality</th><th>El.</th><th>Az.</th><th>Range</th><th>SNR</th><th>Margin</th><th>Doppler</th></tr>
+                <tr><th>Satellite</th><th>Quality</th><th>El.</th><th>Az.</th><th>Range</th><th>Alt.</th><th>SNR</th><th>Doppler</th></tr>
               </thead>
               <tbody>
                 {visible.slice(0, 14).map((satellite, index) => (
@@ -217,8 +238,8 @@ export default function App() {
                     <td>{fmt(satellite.elevationDeg)}°</td>
                     <td>{fmt(satellite.azimuthDeg, 0)}°</td>
                     <td>{fmt(satellite.rangeKm, 0)} km</td>
+                    <td>{fmt(satellite.altitudeKm, 0)} km</td>
                     <td>{fmt(satellite.snrDb)} dB</td>
-                    <td>{fmt(satellite.linkMarginDb)} dB</td>
                     <td>{fmt(satellite.dopplerHz / 1000)} kHz</td>
                   </tr>
                 ))}
