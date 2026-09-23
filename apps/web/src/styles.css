@@ -67,3 +67,34 @@ main{width:min(1560px,calc(100% - 36px));margin:auto;padding-bottom:64px}
 @media(max-width:1180px){.mission-grid,.lower-grid{grid-template-columns:1fr}.mission-stack{grid-template-columns:repeat(2,1fr)}.current-link-panel{grid-column:1/-1}.candidate-rail{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:820px){main{width:min(100% - 24px,1560px)}.mission-header{align-items:flex-start;flex-direction:column}.mission-lock{width:100%}.mission-stack{grid-template-columns:1fr}.link-detail-grid.compact{grid-template-columns:repeat(2,1fr)}.trend-grid{grid-template-columns:1fr}.candidate-rail{grid-template-columns:repeat(2,1fr)}.handover-flow{grid-template-columns:1fr}.handover-arrow i{transform:rotate(90deg)}.topbar-status small{display:none}}
 @media(max-width:540px){.mission-header h1{font-size:39px}.candidate-rail{grid-template-columns:1fr}.controls-grid{grid-template-columns:1fr}.orbital-overlay{grid-template-columns:1fr;position:static;margin:8px 10px 10px}.orbital-overlay div{border-right:0;border-bottom:1px solid #183a4d}.orbital-overlay div:last-child{border-bottom:0}.orbital-svg{min-height:430px}.brand span{display:none}.topbar{height:70px}}
+
+
+/* Earth-position view */
+.ops-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}
+.earth-track-panel{padding-bottom:14px}
+.earth-altitude{display:inline-flex;align-items:center;border:1px solid #235269;border-radius:999px;padding:7px 10px;color:#91cadd;background:#071a25;font:800 8px ui-monospace,monospace;letter-spacing:.08em}
+.earth-map-wrap{margin-top:14px;border:1px solid #16364a;border-radius:13px;overflow:hidden;background:#041019}
+.earth-map{width:100%;display:block}
+.map-grid-line{stroke:#163649;stroke-width:.8;stroke-dasharray:3 5;opacity:.52}
+.map-land{fill:#123447;stroke:#2b5b70;stroke-width:1;opacity:.72}
+.ground-track-line{fill:none;stroke:#5fdfff;stroke-width:2;stroke-dasharray:5 5;opacity:.76;vector-effect:non-scaling-stroke}
+.map-station{color:#6df0a7}
+.map-station-ring{fill:#6df0a715;stroke:#6df0a7;stroke-width:1.4}
+.map-station-core{fill:#a8ffd0;filter:drop-shadow(0 0 6px #6df0a7)}
+.map-station text,.map-satellite text{fill:#eaf8fc;font:800 9px ui-monospace,monospace}
+.map-satellite text.sub{fill:#648699;font-size:7px;font-weight:700}
+.map-satellite{color:#63e4ff;transition:transform 1050ms linear;will-change:transform}
+.map-satellite-halo{fill:#63e4ff12;stroke:#63e4ff88;stroke-width:1.2;animation:mapSatPulse 2s ease-out infinite}
+.map-sat-body{fill:#dceff5;stroke:#63e4ff;stroke-width:.8}
+.map-sat-panel{fill:#173b52;stroke:#63e4ff;stroke-width:.7}
+@keyframes mapSatPulse{0%{r:11;opacity:.5}100%{r:26;opacity:0}}
+.earth-location-readout{display:grid;grid-template-columns:1.5fr .8fr 1fr;gap:8px;margin-top:10px}
+.earth-location-readout>div{padding:10px;border:1px solid #143044;border-radius:9px;background:#05111a}
+.earth-location-readout span{display:block;color:#58798c;font:800 8px ui-monospace,monospace;letter-spacing:.08em}
+.earth-location-readout strong{display:block;margin-top:4px;color:#dff1f6;font:800 10px ui-monospace,monospace}
+.track-key{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;color:#5b7889;font:700 8px ui-monospace,monospace}
+.track-key i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}
+.track-key i.past{background:#63e4ff}.track-key i.station{background:#6df0a7}.track-key i.satellite{background:#e7f7fb}
+@media(max-width:1180px){.ops-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:820px){.ops-grid{grid-template-columns:1fr}.earth-location-readout{grid-template-columns:1fr 1fr}.earth-location-readout>div:first-child{grid-column:1/-1}}
+@media(max-width:540px){.earth-location-readout{grid-template-columns:1fr}.earth-location-readout>div:first-child{grid-column:auto}}
