@@ -18,7 +18,7 @@ type Props = {
 
 type ViewMode = 'observer' | 'satellite' | 'globe';
 
-const SATELLITE_TILES = 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const SATELLITE_TILES = `${window.location.origin}/api/imagery/{z}/{x}/{y}`;
 const BASE_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
 const TERRAIN_TILEJSON = 'https://tiles.mapterhorn.com/tilejson.json';
 
@@ -133,8 +133,8 @@ export default function EarthTrack({ current, station, stationLabel, track }: Pr
           type: 'raster',
           tiles: [SATELLITE_TILES],
           tileSize: 256,
-          attribution: 'Imagery © Esri, Vantor, Earthstar Geographics, and the GIS User Community',
-          maxzoom: 14,
+          attribution: 'Imagery © Esri, Vantor, Earthstar Geographics, and the GIS User Community · proxied by LEO Link Lab',
+          maxzoom: 18,
         });
 
         const layers = map.getStyle().layers || [];
