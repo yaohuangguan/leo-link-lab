@@ -11,6 +11,7 @@ type TrackPoint = {
 type Props = {
   current?: SatelliteLink;
   station: { latDeg: number; lonDeg: number };
+  stationLabel: string;
   track: TrackPoint[];
 };
 
@@ -91,7 +92,7 @@ function formatLon(value: number) {
   return `${Math.abs(value).toFixed(2)}°${value >= 0 ? 'E' : 'W'}`;
 }
 
-export default function EarthTrack({ current, station, track }: Props) {
+export default function EarthTrack({ current, station, stationLabel, track }: Props) {
   const [centerLon, setCenterLon] = useState(current?.subLonDeg ?? 165);
   const [centerLat, setCenterLat] = useState(current?.subLatDeg ?? -25);
   const [follow, setFollow] = useState(true);
@@ -241,7 +242,7 @@ export default function EarthTrack({ current, station, track }: Props) {
             <g transform={`translate(${stationPoint.x} ${stationPoint.y})`} className="globe-station">
               <circle r="10" className="globe-station-ring" />
               <circle r="3.2" className="globe-station-core" />
-              <text x="13" y="-8">AUCKLAND</text>
+              <text x="13" y="-8">{stationLabel.split(',')[0].toUpperCase()}</text>
             </g>
           )}
 
@@ -286,7 +287,7 @@ export default function EarthTrack({ current, station, track }: Props) {
 
       <div className="track-key">
         <span><i className="past" /> ground track</span>
-        <span><i className="station" /> Auckland</span>
+        <span><i className="station" /> {stationLabel.split(',')[0]}</span>
         <span><i className="satellite" /> satellite + subpoint</span>
       </div>
     </section>
