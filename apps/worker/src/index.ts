@@ -151,8 +151,8 @@ async function geocode(query: string, language: 'en' | 'zh') {
   const response = await fetch(target.toString(), {
     signal: AbortSignal.timeout(8000),
     headers: {
-      'User-Agent': 'LEO-Link-Lab/1.0 (+https://leo-link-lab.719919153.workers.dev)',
-      'Referer': 'https://leo-link-lab.719919153.workers.dev/',
+      'User-Agent': 'LEO-Link-Lab/1.0 (+https://leo-link-lab.nzs.workers.dev)',
+      'Referer': 'https://leo-link-lab.nzs.workers.dev/',
       'Accept-Language': language === 'zh' ? 'zh-CN,zh;q=0.9,en;q=0.6' : 'en',
     },
   });
@@ -188,8 +188,8 @@ async function reverseGeocode(lat: number, lon: number, language: 'en' | 'zh') {
   const response = await fetch(target.toString(), {
     signal: AbortSignal.timeout(8000),
     headers: {
-      'User-Agent': 'LEO-Link-Lab/1.0 (+https://leo-link-lab.719919153.workers.dev)',
-      'Referer': 'https://leo-link-lab.719919153.workers.dev/',
+      'User-Agent': 'LEO-Link-Lab/1.0 (+https://leo-link-lab.nzs.workers.dev)',
+      'Referer': 'https://leo-link-lab.nzs.workers.dev/',
       'Accept-Language': language === 'zh' ? 'zh-CN,zh;q=0.9,en;q=0.6' : 'en',
     },
   });
