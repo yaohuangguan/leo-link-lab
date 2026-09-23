@@ -140,7 +140,7 @@ export default function EarthTrack({
   onSelectSatellite,
   apiBase,
 }: Props) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const observerMarkerRef = useRef<maplibregl.Marker | null>(null);
@@ -157,7 +157,10 @@ export default function EarthTrack({
   const [allSatelliteCount, setAllSatelliteCount] = useState(0);
   const [catalogTotal, setCatalogTotal] = useState(0);
 
-  const observerName = useMemo(() => stationLabel.split(/[,，]/).slice(0, 2).join(' · '), [stationLabel]);
+  const observerName = useMemo(() => {
+    const parts = stationLabel.split(/[,，]/).map(part => part.trim()).filter(Boolean);
+    return language === 'zh' ? (parts[0] || stationLabel) : parts.slice(0, 2).join(' · ');
+  }, [stationLabel, language]);
 
   useEffect(() => {
     showAllRef.current = showAllSatellites;

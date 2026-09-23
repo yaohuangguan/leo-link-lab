@@ -38,7 +38,10 @@ export default function ObserverPicker({ apiBase, location, onChange }: Props) {
   const [latInput, setLatInput] = useState(String(location.latDeg));
   const [lonInput, setLonInput] = useState(String(location.lonDeg));
 
-  const shortLabel = useMemo(() => location.label.split(/[,，]/).slice(0, 2).join(language === 'zh' ? '，' : ', '), [location.label, language]);
+  const shortLabel = useMemo(() => {
+    const parts = location.label.split(/[,，]/).map(part => part.trim()).filter(Boolean);
+    return language === 'zh' ? (parts[0] || location.label) : parts.slice(0, 2).join(', ');
+  }, [location.label, language]);
 
   const apply = (next: ObserverLocation) => {
     onChange(next);

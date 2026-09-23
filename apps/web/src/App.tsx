@@ -116,30 +116,50 @@ export default function App() {
     if (station.locale === language) return;
     const controller = new AbortController();
 
-    fetch(`${API}/api/reverse-geocode?lat=${station.latDeg}&lon=${station.lonDeg}&lang=${language}`, {
-      signal: controller.signal,
-    })
-      .then(async response => {
+    const updateLocalizedLabel = async () => {
+      let localizedLabel = '';
+
+      if (station.locale !== 'neutral' && station.label) {
+        const response = await fetch(
+          `${API}/api/geocode?q=${encodeURIComponent(station.label)}&lang=${language}`,
+          { signal: controller.signal },
+        );
+        if (response.ok) {
+          const body = await response.json();
+          const candidates = Array.isArray(body.results) ? body.results : [];
+          const nearest = candidates
+            .map((item: { label: string; latDeg: number; lonDeg: number }) => ({
+              ...item,
+              distance: Math.hypot(item.latDeg - station.latDeg, item.lonDeg - station.lonDeg),
+            }))
+            .sort((a: { distance: number }, b: { distance: number }) => a.distance - b.distance)[0];
+          if (nearest && nearest.distance < 2) localizedLabel = nearest.label;
+        }
+      }
+
+      if (!localizedLabel) {
+        const response = await fetch(
+          `${API}/api/reverse-geocode?lat=${station.latDeg}&lon=${station.lonDeg}&lang=${language}`,
+          { signal: controller.signal },
+        );
+        if (!response.ok) return;
         const body = await response.json();
-        if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
-        return body;
-      })
-      .then(body => {
-        setStation(previous => {
-          if (previous.latDeg !== station.latDeg || previous.lonDeg !== station.lonDeg) return previous;
-          return {
-            ...previous,
-            label: body.label || previous.label,
-            locale: language,
-          };
-        });
-      })
-      .catch(error => {
-        if (error instanceof DOMException && error.name === 'AbortError') return;
+        localizedLabel = body.label || '';
+      }
+
+      if (!localizedLabel) return;
+      setStation(previous => {
+        if (previous.latDeg !== station.latDeg || previous.lonDeg !== station.lonDeg) return previous;
+        return { ...previous, label: localizedLabel, locale: language };
       });
+    };
+
+    updateLocalizedLabel().catch(error => {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+    });
 
     return () => controller.abort();
-  }, [language, station.latDeg, station.lonDeg, station.locale]);
+  }, [language, station.latDeg, station.lonDeg, station.label, station.locale]);
 
   const visible = useMemo(() => records
     .map(record => computeLink(record, station, radio, now))

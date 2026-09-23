@@ -46,7 +46,7 @@ function pointsString(points: TrackPoint[]) {
 }
 
 export default function SkyPlot({ current, track, locationLabel }: Props) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const currentPoint = current ? project(current.azimuthDeg, current.elevationDeg) : null;
   const past = track.filter(point => point.seconds <= 0 && point.elevationDeg >= 0);
   const future = track.filter(point => point.seconds >= 0 && point.elevationDeg >= 0);
@@ -62,7 +62,9 @@ export default function SkyPlot({ current, track, locationLabel }: Props) {
       <div className="panel-title-row">
         <div>
           <p className="eyebrow">{t('AZIMUTH–ELEVATION SKY PLOT')}</p>
-          <h2>{locationLabel.split(/[,，]/).slice(0, 2).join(' · ')}</h2>
+          <h2>{language === 'zh'
+            ? locationLabel.split(/[,，]/)[0].trim()
+            : locationLabel.split(/[,，]/).slice(0, 2).map(part => part.trim()).join(' · ')}</h2>
         </div>
         {current && (
           <span className="sky-bearing">
