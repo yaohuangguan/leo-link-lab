@@ -9,134 +9,179 @@ type TrackPoint = {
 type Props = {
   current?: SatelliteLink;
   track: TrackPoint[];
+  locationLabel: string;
 };
 
-const SIZE = 760;
-const C = SIZE / 2;
-const R = 300;
+const WIDTH = 1160;
+const HEIGHT = 560;
+const LEFT = 54;
+const RIGHT = 54;
+const TOP = 66;
+const HORIZON = 468;
+const PLOT_WIDTH = WIDTH - LEFT - RIGHT;
+const PLOT_HEIGHT = HORIZON - TOP;
 
 function project(azimuthDeg: number, elevationDeg: number) {
-  const radius = ((90 - Math.max(0, Math.min(90, elevationDeg))) / 90) * R;
-  const angle = (azimuthDeg - 90) * Math.PI / 180;
   return {
-    x: C + radius * Math.cos(angle),
-    y: C + radius * Math.sin(angle),
+    x: LEFT + ((azimuthDeg % 360 + 360) % 360) / 360 * PLOT_WIDTH,
+    y: HORIZON - Math.max(0, Math.min(90, elevationDeg)) / 90 * PLOT_HEIGHT,
   };
 }
 
 function compassLabel(azimuth: number) {
   const directions = ['N','NE','E','SE','S','SW','W','NW'];
-  return directions[Math.round((azimuth % 360) / 45) % 8];
+  return directions[Math.round((((azimuth % 360) + 360) % 360) / 45) % 8];
 }
 
-export default function SkyPlot({ current, track }: Props) {
-  const currentPoint = current ? project(current.azimuthDeg, current.elevationDeg) : null;
-  const visibleTrack = track.filter(point => point.elevationDeg >= 0);
-  const path = visibleTrack.map(point => {
+function buildSegments(points: TrackPoint[]) {
+  const segments: TrackPoint[][] = [];
+  let current: TrackPoint[] = [];
+
+  for (const point of points) {
+    if (point.elevationDeg < 0) {
+      if (current.length > 1) segments.push(current);
+      current = [];
+      continue;
+    }
+    const previous = current.at(-1);
+    if (previous && Math.abs(point.azimuthDeg - previous.azimuthDeg) > 180) {
+      if (current.length > 1) segments.push(current);
+      current = [];
+    }
+    current.push(point);
+  }
+
+  if (current.length > 1) segments.push(current);
+  return segments;
+}
+
+function pointsString(points: TrackPoint[]) {
+  return points.map(point => {
     const p = project(point.azimuthDeg, point.elevationDeg);
     return `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
   }).join(' ');
+}
+
+function timeLabel(seconds: number) {
+  if (seconds === 0) return 'NOW';
+  const minutes = Math.round(Math.abs(seconds) / 60);
+  return seconds < 0 ? `−${minutes}m` : `+${minutes}m`;
+}
+
+export default function SkyPlot({ current, track, locationLabel }: Props) {
+  const pastSegments = buildSegments(track.filter(point => point.seconds <= 0));
+  const futureSegments = buildSegments(track.filter(point => point.seconds >= 0));
+  const currentPoint = current ? project(current.azimuthDeg, current.elevationDeg) : null;
+  const visibleFuture = track.filter(point => point.seconds > 0 && point.elevationDeg >= 0);
+  const visiblePast = track.filter(point => point.seconds < 0 && point.elevationDeg >= 0);
 
   return (
-    <section className="panel sky-position-panel">
+    <section className="panel realtime-sky-panel">
       <div className="panel-title-row">
         <div>
-          <p className="eyebrow">SKY POSITION FROM AUCKLAND</p>
-          <h2>{current ? current.name : 'Waiting for a visible satellite'}</h2>
+          <p className="eyebrow">REAL-TIME LOCAL SKY</p>
+          <h2>{locationLabel.split(',').slice(0, 2).join(', ')}</h2>
         </div>
-        {current && (
-          <span className="sky-bearing">
-            {compassLabel(current.azimuthDeg)} · {current.azimuthDeg.toFixed(0)}° azimuth
-          </span>
-        )}
+        {current && <span className="sky-bearing">{current.elevationDeg.toFixed(1)}° EL · {current.azimuthDeg.toFixed(0)}° {compassLabel(current.azimuthDeg)}</span>}
       </div>
 
-      <div className="sky-layout">
-        <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="sky-position-svg" role="img" aria-label="Satellite position in Auckland sky">
+      <div className="panorama-wrap">
+        <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="panorama-sky" role="img" aria-label={`Real-time sky view from ${locationLabel}`}>
           <defs>
-            <radialGradient id="skyDome" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#0e3142" />
-              <stop offset="58%" stopColor="#071a25" />
-              <stop offset="100%" stopColor="#02090f" />
-            </radialGradient>
-            <filter id="skyGlow">
-              <feGaussianBlur stdDeviation="7" result="blur" />
+            <linearGradient id="localSky" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#020912" />
+              <stop offset="46%" stopColor="#092334" />
+              <stop offset="78%" stopColor="#164658" />
+              <stop offset="100%" stopColor="#294d55" />
+            </linearGradient>
+            <linearGradient id="groundFade" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#081417" />
+              <stop offset="100%" stopColor="#020607" />
+            </linearGradient>
+            <filter id="satGlow">
+              <feGaussianBlur stdDeviation="8" result="blur" />
               <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
             </filter>
           </defs>
 
-          <circle cx={C} cy={C} r={R + 28} className="sky-atmosphere" />
-          <circle cx={C} cy={C} r={R} fill="url(#skyDome)" className="sky-horizon" />
+          <rect x="0" y="0" width={WIDTH} height={HORIZON} fill="url(#localSky)" rx="14" />
+          <rect x="0" y={HORIZON} width={WIDTH} height={HEIGHT - HORIZON} fill="url(#groundFade)" />
 
-          {[30,60].map(elevation => {
-            const radius = ((90 - elevation) / 90) * R;
+          {Array.from({ length: 42 }, (_, index) => {
+            const x = (index * 139 + 83) % WIDTH;
+            const y = 28 + ((index * 71 + 39) % 250);
+            return <circle key={index} cx={x} cy={y} r={index % 7 === 0 ? 1.5 : .8} className="local-star" />;
+          })}
+
+          {[15,30,45,60,75].map(elevation => {
+            const y = project(0, elevation).y;
             return (
               <g key={elevation}>
-                <circle cx={C} cy={C} r={radius} className="elevation-ring" />
-                <text x={C + 8} y={C - radius + 18} className="elevation-label">{elevation}° EL</text>
+                <line x1={LEFT} y1={y} x2={WIDTH - RIGHT} y2={y} className="sky-grid-line" />
+                <text x={LEFT + 7} y={y - 7} className="sky-grid-label">{elevation}° elevation</text>
               </g>
             );
           })}
 
-          {[0,45,90,135,180,225,270,315].map(az => {
-            const outer = project(az, 0);
-            const inner = project(az, 90);
-            return <line key={az} x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y} className="azimuth-line" />;
+          {[0,90,180,270,360].map((azimuth, index) => {
+            const x = LEFT + index * PLOT_WIDTH / 4;
+            const labels = ['N · 0°','E · 90°','S · 180°','W · 270°','N · 360°'];
+            return (
+              <g key={azimuth}>
+                <line x1={x} y1={TOP} x2={x} y2={HORIZON} className="azimuth-grid-line" />
+                <text x={x} y={HORIZON + 30} textAnchor="middle" className="horizon-direction">{labels[index]}</text>
+              </g>
+            );
           })}
 
-          <text x={C} y={48} textAnchor="middle" className="compass-major">N</text>
-          <text x={SIZE - 48} y={C + 6} textAnchor="middle" className="compass-major">E</text>
-          <text x={C} y={SIZE - 35} textAnchor="middle" className="compass-major">S</text>
-          <text x={48} y={C + 6} textAnchor="middle" className="compass-major">W</text>
-          <text x={C} y={C + 5} textAnchor="middle" className="zenith-label">ZENITH · 90°</text>
+          <line x1={LEFT} y1={HORIZON} x2={WIDTH - RIGHT} y2={HORIZON} className="horizon-line" />
+          <path d={`M 0 ${HORIZON + 15} L 90 ${HORIZON - 4} L 160 ${HORIZON + 10} L 260 ${HORIZON - 9} L 360 ${HORIZON + 4} L 470 ${HORIZON - 3} L 575 ${HORIZON + 9} L 680 ${HORIZON - 6} L 780 ${HORIZON + 6} L 900 ${HORIZON - 2} L 1030 ${HORIZON + 8} L 1160 ${HORIZON} L 1160 560 L 0 560 Z`} className="ground-silhouette" />
 
-          {path && <polyline points={path} className="future-sky-track" />}
+          {pastSegments.map((segment, index) => <polyline key={`past-${index}`} points={pointsString(segment)} className="sky-track-past" />)}
+          {futureSegments.map((segment, index) => <polyline key={`future-${index}`} points={pointsString(segment)} className="sky-track-future" />)}
 
-          {visibleTrack.map((point, index) => {
-            if (index % 2 !== 0) return null;
+          {[...visiblePast, ...visibleFuture].filter(point => Math.abs(point.seconds) % 120 === 0).map(point => {
             const p = project(point.azimuthDeg, point.elevationDeg);
-            return <circle key={point.seconds} cx={p.x} cy={p.y} r="3" className="future-track-dot" />;
+            return (
+              <g key={point.seconds} transform={`translate(${p.x} ${p.y})`} className="track-time-marker">
+                <circle r="4" />
+                <text x="8" y="-8">{timeLabel(point.seconds)}</text>
+              </g>
+            );
           })}
 
           {currentPoint && current && (
             <g transform={`translate(${currentPoint.x} ${currentPoint.y})`}>
-              <circle r="30" className="active-sky-halo" filter="url(#skyGlow)" />
-              <circle r="11" className="active-sky-dot" />
-              <line x1="0" y1="0" x2="42" y2="-34" className="active-label-line" />
-              <g transform="translate(48 -56)" className="active-sky-label">
-                <rect width="205" height="66" rx="10" />
-                <text x="12" y="23">{current.name}</text>
-                <text x="12" y="44" className="sub">{current.elevationDeg.toFixed(1)}° elevation · {current.azimuthDeg.toFixed(0)}° azimuth</text>
+              <circle r="34" className="realtime-sat-halo" filter="url(#satGlow)" />
+              <g className="realtime-satellite">
+                <rect x="-9" y="-7" width="18" height="14" rx="3" />
+                <rect x="-36" y="-5" width="22" height="10" rx="1.5" />
+                <rect x="14" y="-5" width="22" height="10" rx="1.5" />
+                <line x1="-14" y1="0" x2="-9" y2="0" />
+                <line x1="9" y1="0" x2="14" y2="0" />
+              </g>
+              <line x1="0" y1="0" x2="35" y2="-38" className="realtime-label-line" />
+              <g transform="translate(42 -76)" className="realtime-label">
+                <rect width="232" height="72" rx="10" />
+                <text x="13" y="25">{current.name}</text>
+                <text x="13" y="47" className="sub">NOW · {current.elevationDeg.toFixed(1)}° EL · {current.azimuthDeg.toFixed(0)}° {compassLabel(current.azimuthDeg)}</text>
               </g>
             </g>
           )}
-        </svg>
 
-        <div className="sky-explainer">
-          <div>
-            <span>HOW TO READ THIS</span>
-            <strong>Edge = horizon</strong>
-            <p>A satellite on the outer circle is just above the horizon.</p>
-          </div>
-          <div>
-            <span>HEIGHT IN THE SKY</span>
-            <strong>Center = directly overhead</strong>
-            <p>Higher elevation means a shorter, usually stronger link.</p>
-          </div>
-          <div>
-            <span>DIRECTION</span>
-            <strong>N / E / S / W = azimuth</strong>
-            <p>The cyan trail is the predicted path for the next few minutes.</p>
-          </div>
-          {current && (
-            <div className="sky-now-card">
-              <span>NOW</span>
-              <strong>{current.elevationDeg.toFixed(1)}° elevation</strong>
-              <b>{current.azimuthDeg.toFixed(0)}° {compassLabel(current.azimuthDeg)}</b>
-              <small>{current.rangeKm.toFixed(0)} km slant range</small>
-            </div>
-          )}
-        </div>
+          <g className="sky-legend" transform="translate(70 38)">
+            <circle cx="0" cy="0" r="4" className="legend-now" /><text x="10" y="4">current satellite</text>
+            <line x1="150" y1="0" x2="184" y2="0" className="legend-future" /><text x="194" y="4">future path</text>
+            <line x1="300" y1="0" x2="334" y2="0" className="legend-past" /><text x="344" y="4">past path</text>
+          </g>
+        </svg>
+      </div>
+
+      <div className="sky-readout">
+        <div><span>Direction</span><strong>{current ? `${current.azimuthDeg.toFixed(0)}° · ${compassLabel(current.azimuthDeg)}` : '—'}</strong><small>Azimuth around the horizon</small></div>
+        <div><span>Height in sky</span><strong>{current ? `${current.elevationDeg.toFixed(1)}°` : '—'}</strong><small>0° horizon · 90° overhead</small></div>
+        <div><span>Slant range</span><strong>{current ? `${current.rangeKm.toFixed(0)} km` : '—'}</strong><small>Observer to satellite</small></div>
+        <div><span>Motion</span><strong>{current ? current.rangeRateMps < 0 ? 'Approaching' : 'Receding' : '—'}</strong><small>From range-rate sign</small></div>
       </div>
     </section>
   );
