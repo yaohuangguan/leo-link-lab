@@ -1,5 +1,11 @@
 # LEO Link Lab
 
+## About
+
+LEO Link Lab is an interactive satellite-communications learning environment that turns low-Earth-orbit link theory into something you can see and manipulate. Using live orbital data and a real-time 3D Earth view, it connects satellite geometry with RF calculations such as slant range, elevation, free-space path loss, received power, thermal noise, SNR, Doppler shift, propagation delay, and Shannon capacity.
+
+The goal is not to simulate an operational Starlink terminal, but to provide a technically grounded lab for exploring how changing observer location, satellite position, frequency, bandwidth, transmit power, antenna gain, and other link parameters affect a LEO connection. The interface is bilingual and designed for both conceptual learning and calculation-driven experimentation.
+
 Interactive LEO satellite communication lab using real Starlink orbital data.
 
 ## What it teaches
