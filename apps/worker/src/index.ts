@@ -19,7 +19,6 @@ const ESRI_LABELS = 'https://services.arcgisonline.com/ArcGIS/rest/services/Refe
 const IMAGERY_CACHE_SECONDS = 7 * 24 * 60 * 60;
 const ACTIVE_SOURCE = 'https://celestrak.org/NORAD/elements/gp.php?GROUP=ACTIVE&FORMAT=JSON';
 const ACTIVE_CACHE_KEY = new Request('https://leo-link-lab.internal/cache/active-satellites');
-const ACTIVE_REFRESH_MS = 2 * 60 * 60 * 1000;
 
 function cors(env: Env) {
   return {
@@ -74,26 +73,24 @@ async function getImmediateData(ctx: ExecutionContext): Promise<CachedPayload & 
   };
 }
 
-async function refreshActiveCache() {
-  const satellites = await fetchSource(ACTIVE_SOURCE);
-  const payload: CachedPayload = { fetchedAt: Date.now(), source: ACTIVE_SOURCE, satellites };
-  await caches.default.put(ACTIVE_CACHE_KEY, Response.json(payload, {
-    headers: { 'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}` },
-  }));
-  return payload;
-}
+async function getActiveCatalogResponse() {
+  const cached = await caches.default.match(ACTIVE_CACHE_KEY);
+  if (cached) return cached;
 
-async function getActiveData(ctx: ExecutionContext): Promise<CachedPayload & { stale: boolean }> {
-  const cachedResponse = await caches.default.match(ACTIVE_CACHE_KEY);
-  if (cachedResponse) {
-    const cached = await cachedResponse.json<CachedPayload>();
-    const stale = Date.now() - cached.fetchedAt >= ACTIVE_REFRESH_MS;
-    if (stale) ctx.waitUntil(refreshActiveCache().catch(() => undefined));
-    return { ...cached, stale };
-  }
+  const response = await fetch(ACTIVE_SOURCE, {
+    signal: AbortSignal.timeout(25000),
+    headers: { 'User-Agent': 'leo-link-lab/0.1 educational-project' },
+  });
+  if (!response.ok) throw new Error(`CelesTrak active catalog returned HTTP ${response.status}`);
 
-  const fresh = await refreshActiveCache();
-  return { ...fresh, stale: false };
+  const result = new Response(response.body, {
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': `public, max-age=${Math.round(REFRESH_MS / 1000)}`,
+    },
+  });
+  await caches.default.put(ACTIVE_CACHE_KEY, result.clone());
+  return result;
 }
 
 function sampleEvenly<T>(items: T[], limit: number) {
@@ -231,15 +228,15 @@ export default {
 
     if (url.pathname === '/api/active-satellites') {
       try {
-        const payload = await getActiveData(ctx);
-        return Response.json({
-          source: 'CelesTrak GP / Active satellites',
-          sourceUrl: ACTIVE_SOURCE,
-          fetchedAt: new Date(payload.fetchedAt).toISOString(),
-          stale: payload.stale,
-          total: payload.satellites.length,
-          satellites: payload.satellites,
-        }, { headers: { ...headers, 'Cache-Control': 'public, max-age=300' } });
+        const response = await getActiveCatalogResponse();
+        return new Response(response.body, {
+          status: response.status,
+          headers: {
+            ...headers,
+            'Content-Type': 'application/json',
+            'Cache-Control': response.headers.get('Cache-Control') || 'public, max-age=7200',
+          },
+        });
       } catch (error) {
         return Response.json({
           error: error instanceof Error ? error.message : 'Unable to load active satellite catalog',

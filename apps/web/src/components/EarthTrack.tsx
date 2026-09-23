@@ -420,9 +420,10 @@ export default function EarthTrack({
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
 
+      const records = Array.isArray(body) ? body : (body.satellites || []);
       catalogLoadedRef.current = true;
-      setCatalogTotal(Number(body.total || body.satellites?.length || 0));
-      worker.postMessage({ type: 'init', records: body.satellites || [] });
+      setCatalogTotal(records.length);
+      worker.postMessage({ type: 'init', records });
     } catch {
       setCatalogStatus('error');
       setShowAllSatellites(false);
