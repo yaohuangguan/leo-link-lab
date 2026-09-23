@@ -11,7 +11,8 @@
     "@leo/core": "0.1.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "satellite.js": "^7.1.0"
+    "satellite.js": "^7.1.0",
+    "maplibre-gl": "^6.11.0"
   },
   "devDependencies": {
     "@types/react": "^19.1.0",
