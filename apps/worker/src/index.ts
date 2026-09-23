@@ -17,6 +17,9 @@ const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 const ESRI_IMAGERY = 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile';
 const ESRI_LABELS = 'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile';
 const IMAGERY_CACHE_SECONDS = 7 * 24 * 60 * 60;
+const ACTIVE_SOURCE = 'https://celestrak.org/NORAD/elements/gp.php?GROUP=ACTIVE&FORMAT=JSON';
+const ACTIVE_CACHE_KEY = new Request('https://leo-link-lab.internal/cache/active-satellites');
+const ACTIVE_REFRESH_MS = 2 * 60 * 60 * 1000;
 
 function cors(env: Env) {
   return {
@@ -69,6 +72,28 @@ async function getImmediateData(ctx: ExecutionContext): Promise<CachedPayload & 
     satellites: fallbackStarlink as OmmRecord[],
     stale: true,
   };
+}
+
+async function refreshActiveCache() {
+  const satellites = await fetchSource(ACTIVE_SOURCE);
+  const payload: CachedPayload = { fetchedAt: Date.now(), source: ACTIVE_SOURCE, satellites };
+  await caches.default.put(ACTIVE_CACHE_KEY, Response.json(payload, {
+    headers: { 'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}` },
+  }));
+  return payload;
+}
+
+async function getActiveData(ctx: ExecutionContext): Promise<CachedPayload & { stale: boolean }> {
+  const cachedResponse = await caches.default.match(ACTIVE_CACHE_KEY);
+  if (cachedResponse) {
+    const cached = await cachedResponse.json<CachedPayload>();
+    const stale = Date.now() - cached.fetchedAt >= ACTIVE_REFRESH_MS;
+    if (stale) ctx.waitUntil(refreshActiveCache().catch(() => undefined));
+    return { ...cached, stale };
+  }
+
+  const fresh = await refreshActiveCache();
+  return { ...fresh, stale: false };
 }
 
 function sampleEvenly<T>(items: T[], limit: number) {
@@ -201,6 +226,24 @@ export default {
         });
       } catch (error) {
         return Response.json({ error: error instanceof Error ? error.message : 'Geocoding failed' }, { status: 502, headers });
+      }
+    }
+
+    if (url.pathname === '/api/active-satellites') {
+      try {
+        const payload = await getActiveData(ctx);
+        return Response.json({
+          source: 'CelesTrak GP / Active satellites',
+          sourceUrl: ACTIVE_SOURCE,
+          fetchedAt: new Date(payload.fetchedAt).toISOString(),
+          stale: payload.stale,
+          total: payload.satellites.length,
+          satellites: payload.satellites,
+        }, { headers: { ...headers, 'Cache-Control': 'public, max-age=300' } });
+      } catch (error) {
+        return Response.json({
+          error: error instanceof Error ? error.message : 'Unable to load active satellite catalog',
+        }, { status: 502, headers });
       }
     }
 

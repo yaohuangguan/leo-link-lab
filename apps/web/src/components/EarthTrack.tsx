@@ -15,11 +15,16 @@ type Props = {
   station: { latDeg: number; lonDeg: number };
   stationLabel: string;
   track: TrackPoint[];
+  visible: SatelliteLink[];
+  onSelectSatellite: (noradId: string) => void;
+  apiBase: string;
 };
 
 type ViewMode = 'observer' | 'satellite' | 'globe';
+type CatalogStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 const TERRAIN_TILEJSON = 'https://tiles.mapterhorn.com/tilejson.json';
+const EMPTY_GEOJSON = { type: 'FeatureCollection', features: [] };
 
 function formatLat(value: number) {
   return `${Math.abs(value).toFixed(4)}°${value >= 0 ? 'N' : 'S'}`;
@@ -126,16 +131,37 @@ function createMapStyle(): maplibregl.StyleSpecification {
   };
 }
 
-export default function EarthTrack({ current, station, stationLabel, track }: Props) {
+export default function EarthTrack({
+  current,
+  station,
+  stationLabel,
+  track,
+  visible,
+  onSelectSatellite,
+  apiBase,
+}: Props) {
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const observerMarkerRef = useRef<maplibregl.Marker | null>(null);
   const satelliteMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const constellationWorkerRef = useRef<Worker | null>(null);
+  const catalogLoadedRef = useRef(false);
+  const showAllRef = useRef(false);
+
   const [viewMode, setViewMode] = useState<ViewMode>('observer');
   const [mapReady, setMapReady] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(true);
+  const [showAllSatellites, setShowAllSatellites] = useState(false);
+  const [catalogStatus, setCatalogStatus] = useState<CatalogStatus>('idle');
+  const [allSatelliteCount, setAllSatelliteCount] = useState(0);
+  const [catalogTotal, setCatalogTotal] = useState(0);
 
   const observerName = useMemo(() => stationLabel.split(',').slice(0, 2).join(', '), [stationLabel]);
+
+  useEffect(() => {
+    showAllRef.current = showAllSatellites;
+  }, [showAllSatellites]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -182,23 +208,39 @@ export default function EarthTrack({ current, station, stationLabel, track }: Pr
         map.addControl(new maplibregl.TerrainControl({ source: 'terrain-source', exaggeration: 1 }), 'top-right');
       }
 
-      if (!map.getSource('ground-track')) {
-        map.addSource('ground-track', {
-          type: 'geojson',
-          data: trackGeoJson(track) as any,
-        });
-        map.addLayer({
-          id: 'ground-track-line',
-          type: 'line',
-          source: 'ground-track',
-          paint: {
-            'line-color': ['match', ['get', 'kind'], 'future', '#63e8ff', '#91a0a8'],
-            'line-width': ['match', ['get', 'kind'], 'future', 4, 2],
-            'line-opacity': ['match', ['get', 'kind'], 'future', 0.95, 0.65],
-            'line-dasharray': [2, 1.5],
-          },
-        });
-      }
+      map.addSource('all-active-satellites', {
+        type: 'geojson',
+        data: EMPTY_GEOJSON as any,
+      });
+      map.addLayer({
+        id: 'all-active-satellites-layer',
+        type: 'circle',
+        source: 'all-active-satellites',
+        layout: { visibility: 'none' },
+        paint: {
+          'circle-color': '#b8f4ff',
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 0, 1.15, 2, 1.6, 5, 2.4, 8, 3.2],
+          'circle-opacity': ['interpolate', ['linear'], ['zoom'], 0, 0.62, 4, 0.74, 8, 0.82],
+          'circle-stroke-color': '#164a60',
+          'circle-stroke-width': 0.45,
+        },
+      });
+
+      map.addSource('ground-track', {
+        type: 'geojson',
+        data: trackGeoJson(track) as any,
+      });
+      map.addLayer({
+        id: 'ground-track-line',
+        type: 'line',
+        source: 'ground-track',
+        paint: {
+          'line-color': ['match', ['get', 'kind'], 'future', '#63e8ff', '#91a0a8'],
+          'line-width': ['match', ['get', 'kind'], 'future', 4, 2],
+          'line-opacity': ['match', ['get', 'kind'], 'future', 0.95, 0.65],
+          'line-dasharray': [2, 1.5],
+        },
+      });
 
       setMapReady(true);
       map.flyTo({
@@ -206,12 +248,14 @@ export default function EarthTrack({ current, station, stationLabel, track }: Pr
         zoom: 9,
         pitch: 58,
         bearing: 0,
-        duration: 1300,
+        duration: 1200,
         essential: true,
       });
     });
 
     return () => {
+      constellationWorkerRef.current?.terminate();
+      constellationWorkerRef.current = null;
       observerMarkerRef.current?.remove();
       satelliteMarkerRef.current?.remove();
       map.remove();
@@ -233,7 +277,7 @@ export default function EarthTrack({ current, station, stationLabel, track }: Pr
         zoom: 9,
         pitch: 58,
         bearing: 0,
-        duration: 1200,
+        duration: 1100,
         essential: true,
       });
     }
@@ -274,7 +318,7 @@ export default function EarthTrack({ current, station, stationLabel, track }: Pr
       zoom: 10.5,
       pitch: 62,
       bearing: 0,
-      duration: 1300,
+      duration: 1200,
       essential: true,
     });
   };
@@ -288,7 +332,7 @@ export default function EarthTrack({ current, station, stationLabel, track }: Pr
       zoom: 7.2,
       pitch: 50,
       bearing: 0,
-      duration: 1300,
+      duration: 1200,
       essential: true,
     });
   };
@@ -299,12 +343,92 @@ export default function EarthTrack({ current, station, stationLabel, track }: Pr
     setViewMode('globe');
     map.flyTo({
       center: current ? [current.subLonDeg, current.subLatDeg] : [station.lonDeg, station.latDeg],
-      zoom: 1.55,
+      zoom: 1.45,
       pitch: 0,
       bearing: 0,
-      duration: 1300,
+      duration: 1200,
       essential: true,
     });
+  };
+
+  const selectVisibleSatellite = (satellite: SatelliteLink) => {
+    onSelectSatellite(satellite.noradId);
+    setViewMode('satellite');
+
+    mapRef.current?.flyTo({
+      center: [satellite.subLonDeg, satellite.subLatDeg],
+      zoom: Math.min(mapRef.current.getZoom(), 6.5),
+      pitch: 35,
+      bearing: 0,
+      duration: 900,
+      essential: true,
+    });
+  };
+
+  const ensureConstellationWorker = () => {
+    if (constellationWorkerRef.current) return constellationWorkerRef.current;
+
+    const worker = new Worker(new URL('../workers/constellation.worker.ts', import.meta.url), { type: 'module' });
+    worker.onmessage = event => {
+      const message = event.data;
+      if (message.type === 'ready') {
+        setCatalogStatus('ready');
+        setCatalogTotal(message.count);
+        worker.postMessage({ type: 'start', intervalMs: 3000 });
+        return;
+      }
+
+      if (message.type === 'positions') {
+        setAllSatelliteCount(message.count);
+        if (!showAllRef.current) return;
+        const source = mapRef.current?.getSource('all-active-satellites') as maplibregl.GeoJSONSource | undefined;
+        source?.setData(message.geojson);
+      }
+    };
+
+    constellationWorkerRef.current = worker;
+    return worker;
+  };
+
+  const toggleAllSatellites = async () => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    if (showAllSatellites) {
+      setShowAllSatellites(false);
+      showAllRef.current = false;
+      map.setLayoutProperty('all-active-satellites-layer', 'visibility', 'none');
+      constellationWorkerRef.current?.postMessage({ type: 'stop' });
+      return;
+    }
+
+    setShowAllSatellites(true);
+    showAllRef.current = true;
+    map.setLayoutProperty('all-active-satellites-layer', 'visibility', 'visible');
+    flyGlobe();
+
+    const worker = ensureConstellationWorker();
+
+    if (catalogLoadedRef.current) {
+      worker.postMessage({ type: 'start', intervalMs: 3000 });
+      return;
+    }
+
+    setCatalogStatus('loading');
+    try {
+      const response = await fetch(`${apiBase}/api/active-satellites`);
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+
+      catalogLoadedRef.current = true;
+      setCatalogTotal(Number(body.total || body.satellites?.length || 0));
+      worker.postMessage({ type: 'init', records: body.satellites || [] });
+    } catch {
+      setCatalogStatus('error');
+      setShowAllSatellites(false);
+      showAllRef.current = false;
+      map.setLayoutProperty('all-active-satellites-layer', 'visibility', 'none');
+    }
   };
 
   return (
@@ -320,10 +444,75 @@ export default function EarthTrack({ current, station, stationLabel, track }: Pr
           <button className={viewMode === 'observer' ? 'active' : ''} type="button" onClick={flyObserver}>{t('Observer')}</button>
           <button className={viewMode === 'satellite' ? 'active' : ''} type="button" onClick={flySatellite} disabled={!current}>{t('Satellite')}</button>
           <button className={viewMode === 'globe' ? 'active' : ''} type="button" onClick={flyGlobe}>{t('Globe')}</button>
+          <button
+            className={showAllSatellites ? 'active constellation-toggle' : 'constellation-toggle'}
+            type="button"
+            onClick={toggleAllSatellites}
+            disabled={catalogStatus === 'loading'}
+          >
+            {catalogStatus === 'loading'
+              ? t('Loading all satellites…')
+              : showAllSatellites
+                ? t('Hide all active satellites')
+                : t('Show all active satellites')}
+          </button>
         </div>
       </div>
 
-      <div className="real-earth-map" ref={containerRef} />
+      <div className="earth-map-shell">
+        <div className="real-earth-map" ref={containerRef} />
+
+        <aside className={`visible-satellite-drawer ${drawerOpen ? 'open' : 'collapsed'}`}>
+          <div className="visible-satellite-drawer-head">
+            <div>
+              <span>{t('VISIBLE NOW')}</span>
+              <strong>{t('{count} satellites', { count: visible.length })}</strong>
+            </div>
+            <button type="button" onClick={() => setDrawerOpen(value => !value)} aria-label={drawerOpen ? 'Collapse' : 'Expand'}>
+              {drawerOpen ? '‹' : '›'}
+            </button>
+          </div>
+
+          {drawerOpen && (
+            <>
+              <div className="visible-satellite-list">
+                {visible.map(satellite => {
+                  const active = satellite.noradId === current?.noradId;
+                  return (
+                    <button
+                      key={satellite.noradId}
+                      type="button"
+                      className={active ? 'active' : ''}
+                      onClick={() => selectVisibleSatellite(satellite)}
+                    >
+                      <div>
+                        <strong>{satellite.name}</strong>
+                        <small>NORAD {satellite.noradId}</small>
+                      </div>
+                      <div>
+                        <b>{satellite.elevationDeg.toFixed(1)}° EL</b>
+                        <small>{satellite.snrDb.toFixed(1)} dB SNR</small>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="visible-satellite-drawer-foot">
+                <span>{t('Click a satellite to pin it and move the Earth view.')}</span>
+              </div>
+            </>
+          )}
+        </aside>
+
+        {showAllSatellites && (
+          <div className="constellation-status">
+            <i />
+            <span>{t('ALL ACTIVE SATELLITES')}</span>
+            <strong>{allSatelliteCount || catalogTotal || '…'}</strong>
+            <small>{t('CelesTrak ACTIVE catalog · positions update every 3 s')}</small>
+          </div>
+        )}
+      </div>
 
       <div className="earth-view-readout">
         <div>

@@ -205,12 +205,12 @@ export default function App() {
     setRadio(previous => ({ ...previous, [key]: value }));
   };
 
-  const pinSatellite = (noradId: string) => {
+  const pinSatellite = (noradId: string, scrollToSky = true) => {
     setLockedNoradId(noradId);
     setManualSelection(true);
     lockStartedAt.current = Date.now();
     betterCandidate.current = null;
-    document.getElementById('overview')?.scrollIntoView({ behavior: 'smooth' });
+    if (scrollToSky) document.getElementById('overview')?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const returnToAuto = () => {
@@ -265,7 +265,15 @@ export default function App() {
           />
           <div className="two-column-section link-section-grid">
             <CurrentLinkPanel current={tracked} radio={radio} manualSelection={manualSelection} />
-            <EarthTrack current={tracked} station={station} stationLabel={station.label} track={earthTrack} />
+            <EarthTrack
+              current={tracked}
+              station={station}
+              stationLabel={station.label}
+              track={earthTrack}
+              visible={visible}
+              onSelectSatellite={noradId => pinSatellite(noradId, false)}
+              apiBase={API}
+            />
           </div>
         </section>
 
