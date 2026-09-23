@@ -1,3 +1,5 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { SatelliteLink } from '../types';
 
 type TrackPoint = {
@@ -12,14 +14,72 @@ type Props = {
   track: TrackPoint[];
 };
 
-const WIDTH = 720;
-const HEIGHT = 350;
+type GeoPoint = [number, number];
 
-function project(latDeg: number, lonDeg: number) {
-  return {
-    x: ((lonDeg + 180) / 360) * WIDTH,
-    y: ((90 - latDeg) / 180) * HEIGHT,
-  };
+const WIDTH = 720;
+const HEIGHT = 430;
+const CX = 360;
+const CY = 215;
+const R = 166;
+const DEG = Math.PI / 180;
+
+const continents: GeoPoint[][] = [
+  [[-168,72],[-145,68],[-127,56],[-124,42],[-117,32],[-99,19],[-82,25],[-80,36],[-70,45],[-60,53],[-76,63],[-105,72],[-140,70],[-168,72]],
+  [[-81,12],[-67,7],[-52,-4],[-44,-22],[-53,-36],[-66,-55],[-74,-41],[-79,-16],[-81,12]],
+  [[-10,36],[4,44],[20,40],[33,31],[42,14],[50,2],[42,-15],[30,-30],[18,-35],[7,-25],[-5,-4],[-15,17],[-10,36]],
+  [[-10,36],[8,46],[28,54],[45,58],[65,67],[92,72],[120,63],[145,55],[162,45],[151,30],[126,20],[111,8],[95,18],[76,24],[60,31],[45,35],[31,41],[16,39],[-10,36]],
+  [[111,-11],[129,-12],[145,-21],[154,-34],[142,-43],[124,-34],[115,-24],[111,-11]],
+  [[166,-34],[176,-39],[179,-46],[170,-47],[166,-42],[166,-34]],
+  [[-53,60],[-43,68],[-35,74],[-46,81],[-61,80],[-70,72],[-53,60]],
+];
+
+function normalizeLon(value: number) {
+  let result = value;
+  while (result > 180) result -= 360;
+  while (result < -180) result += 360;
+  return result;
+}
+
+function project(latDeg: number, lonDeg: number, centerLatDeg: number, centerLonDeg: number) {
+  const phi = latDeg * DEG;
+  const lambda = lonDeg * DEG;
+  const phi0 = centerLatDeg * DEG;
+  const lambda0 = centerLonDeg * DEG;
+  const dLambda = lambda - lambda0;
+
+  const cosC = Math.sin(phi0) * Math.sin(phi) + Math.cos(phi0) * Math.cos(phi) * Math.cos(dLambda);
+  const x = CX + R * Math.cos(phi) * Math.sin(dLambda);
+  const y = CY - R * (Math.cos(phi0) * Math.sin(phi) - Math.sin(phi0) * Math.cos(phi) * Math.cos(dLambda));
+
+  return { x, y, visible: cosC >= 0, cosC };
+}
+
+function visibleSegments(points: GeoPoint[], centerLat: number, centerLon: number) {
+  const segments: string[] = [];
+  let current: string[] = [];
+
+  for (const [lon, lat] of points) {
+    const point = project(lat, lon, centerLat, centerLon);
+    if (point.visible) {
+      current.push(`${point.x.toFixed(1)},${point.y.toFixed(1)}`);
+    } else if (current.length > 1) {
+      segments.push(current.join(' '));
+      current = [];
+    } else {
+      current = [];
+    }
+  }
+
+  if (current.length > 1) segments.push(current.join(' '));
+  return segments;
+}
+
+function graticuleLatitude(lat: number) {
+  return Array.from({ length: 73 }, (_, i): GeoPoint => [-180 + i * 5, lat]);
+}
+
+function graticuleLongitude(lon: number) {
+  return Array.from({ length: 37 }, (_, i): GeoPoint => [lon, -90 + i * 5]);
 }
 
 function formatLat(value: number) {
@@ -30,110 +90,173 @@ function formatLon(value: number) {
   return `${Math.abs(value).toFixed(2)}°${value >= 0 ? 'E' : 'W'}`;
 }
 
-function splitTrack(points: TrackPoint[]) {
-  const segments: TrackPoint[][] = [];
-  let current: TrackPoint[] = [];
-
-  for (const point of points) {
-    const previous = current.at(-1);
-    if (previous && Math.abs(point.lonDeg - previous.lonDeg) > 180) {
-      if (current.length > 1) segments.push(current);
-      current = [];
-    }
-    current.push(point);
-  }
-
-  if (current.length > 1) segments.push(current);
-  return segments;
-}
-
-function polyline(points: TrackPoint[]) {
-  return points.map(point => {
-    const projected = project(point.latDeg, point.lonDeg);
-    return `${projected.x.toFixed(1)},${projected.y.toFixed(1)}`;
-  }).join(' ');
-}
-
-const land = [
-  'M52 83 L82 56 L133 48 L174 70 L188 98 L167 113 L139 105 L122 130 L92 122 L75 100 Z',
-  'M161 151 L188 162 L205 194 L199 230 L181 276 L162 257 L153 215 L142 181 Z',
-  'M336 78 L365 65 L397 71 L413 91 L392 107 L365 103 L347 119 L328 104 Z',
-  'M355 119 L398 121 L423 157 L416 208 L393 256 L369 244 L350 203 L342 158 Z',
-  'M413 83 L461 57 L536 56 L607 82 L649 119 L630 145 L581 139 L555 112 L513 121 L479 104 L448 118 L414 104 Z',
-  'M566 221 L603 207 L641 221 L652 248 L633 269 L590 268 L558 246 Z',
-  'M276 40 L296 27 L314 40 L307 63 L284 67 Z',
-];
-
 export default function EarthTrack({ current, station, track }: Props) {
-  const stationPoint = project(station.latDeg, station.lonDeg);
-  const satellitePoint = current ? project(current.subLatDeg, current.subLonDeg) : null;
-  const segments = splitTrack(track);
+  const [centerLon, setCenterLon] = useState(current?.subLonDeg ?? 165);
+  const [centerLat, setCenterLat] = useState(current?.subLatDeg ?? -25);
+  const [follow, setFollow] = useState(true);
+  const dragRef = useRef<{ x: number; y: number; lon: number; lat: number } | null>(null);
+
+  useEffect(() => {
+    if (!current || !follow) return;
+    setCenterLon(previous => {
+      const delta = normalizeLon(current.subLonDeg - previous);
+      return normalizeLon(previous + delta * .38);
+    });
+    setCenterLat(previous => previous + (current.subLatDeg - previous) * .38);
+  }, [current?.subLonDeg, current?.subLatDeg, follow]);
+
+  const graticules = useMemo(() => {
+    const latitudeLines = [-60,-30,0,30,60].flatMap(lat => visibleSegments(graticuleLatitude(lat), centerLat, centerLon));
+    const longitudeLines = [-150,-120,-90,-60,-30,0,30,60,90,120,150,180].flatMap(lon => visibleSegments(graticuleLongitude(lon), centerLat, centerLon));
+    return [...latitudeLines, ...longitudeLines];
+  }, [centerLat, centerLon]);
+
+  const coastlines = useMemo(
+    () => continents.flatMap(continent => visibleSegments(continent, centerLat, centerLon)),
+    [centerLat, centerLon],
+  );
+
+  const trackSegments = useMemo(() => {
+    const points: GeoPoint[] = track.map(point => [point.lonDeg, point.latDeg]);
+    return visibleSegments(points, centerLat, centerLon);
+  }, [track, centerLat, centerLon]);
+
+  const stationPoint = project(station.latDeg, station.lonDeg, centerLat, centerLon);
+  const subpoint = current ? project(current.subLatDeg, current.subLonDeg, centerLat, centerLon) : null;
+
+  const satellitePoint = subpoint && subpoint.visible ? (() => {
+    const dx = subpoint.x - CX;
+    const dy = subpoint.y - CY;
+    const length = Math.max(Math.hypot(dx, dy), 1);
+    const radial = 22 + Math.min(24, (current?.altitudeKm ?? 550) / 30);
+    return {
+      x: subpoint.x + dx / length * radial,
+      y: subpoint.y + dy / length * radial,
+    };
+  })() : null;
+
+  const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = { x: event.clientX, y: event.clientY, lon: centerLon, lat: centerLat };
+    setFollow(false);
+  };
+
+  const onPointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (!dragRef.current) return;
+    const dx = event.clientX - dragRef.current.x;
+    const dy = event.clientY - dragRef.current.y;
+    setCenterLon(normalizeLon(dragRef.current.lon - dx * .42));
+    setCenterLat(Math.max(-75, Math.min(75, dragRef.current.lat + dy * .32)));
+  };
+
+  const onPointerUp = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    dragRef.current = null;
+  };
+
+  const refocus = () => {
+    if (current) {
+      setCenterLon(current.subLonDeg);
+      setCenterLat(current.subLatDeg);
+    } else {
+      setCenterLon(165);
+      setCenterLat(-25);
+    }
+    setFollow(true);
+  };
 
   return (
-    <section className="panel earth-track-panel">
+    <section className="panel globe-panel">
       <div className="panel-title-row">
         <div>
-          <p className="eyebrow">EARTH TRACK</p>
-          <h2>Where is the satellite?</h2>
+          <p className="eyebrow">3D GLOBE / GROUND TRACK</p>
+          <h2>Where is {current?.name ?? 'the satellite'}?</h2>
         </div>
-        <span className="earth-altitude">{current ? `${current.altitudeKm.toFixed(0)} km ALT` : 'NO LOCK'}</span>
+        <button className={`globe-follow ${follow ? 'active' : ''}`} onClick={refocus}>
+          {follow ? 'FOLLOWING SAT' : 'FOLLOW SAT'}
+        </button>
       </div>
 
-      <div className="earth-map-wrap">
-        <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="earth-map" role="img" aria-label="Current satellite ground track">
+      <div className="globe-wrap">
+        <svg
+          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+          className="globe-svg"
+          role="img"
+          aria-label="Rotatable globe with satellite ground track"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
           <defs>
-            <linearGradient id="ocean" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#071a28" />
-              <stop offset="100%" stopColor="#041019" />
-            </linearGradient>
-            <filter id="mapGlow">
-              <feGaussianBlur stdDeviation="5" result="blur" />
-              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+            <radialGradient id="globeOcean" cx="34%" cy="26%" r="78%">
+              <stop offset="0%" stopColor="#153d51" />
+              <stop offset="48%" stopColor="#092536" />
+              <stop offset="100%" stopColor="#031019" />
+            </radialGradient>
+            <radialGradient id="globeAtmosphere" cx="50%" cy="50%" r="50%">
+              <stop offset="72%" stopColor="#59ddff" stopOpacity="0" />
+              <stop offset="88%" stopColor="#59ddff" stopOpacity=".12" />
+              <stop offset="100%" stopColor="#59ddff" stopOpacity=".45" />
+            </radialGradient>
+            <filter id="globeGlow">
+              <feGaussianBlur stdDeviation="9" />
             </filter>
           </defs>
 
-          <rect width={WIDTH} height={HEIGHT} rx="15" fill="url(#ocean)" />
+          <circle cx={CX} cy={CY} r={R + 13} fill="#55dfff" opacity=".13" filter="url(#globeGlow)" />
+          <circle cx={CX} cy={CY} r={R + 8} fill="url(#globeAtmosphere)" />
+          <circle cx={CX} cy={CY} r={R} fill="url(#globeOcean)" className="globe-sphere" />
 
-          {[-120,-60,0,60,120].map(lon => {
-            const p = project(0, lon);
-            return <line key={lon} x1={p.x} y1="0" x2={p.x} y2={HEIGHT} className="map-grid-line" />;
-          })}
-          {[-60,-30,0,30,60].map(lat => {
-            const p = project(lat, 0);
-            return <line key={lat} x1="0" y1={p.y} x2={WIDTH} y2={p.y} className="map-grid-line" />;
-          })}
-
-          {land.map((path, index) => <path key={index} d={path} className="map-land" />)}
-
-          {segments.map((segment, index) => (
-            <polyline key={index} points={polyline(segment)} className="ground-track-line" />
+          {graticules.map((points, index) => (
+            <polyline key={`grid-${index}`} points={points} className="globe-grid" />
           ))}
 
-          <g className="map-station" style={{ transform: `translate(${stationPoint.x}px, ${stationPoint.y}px)` }}>
-            <circle r="9" className="map-station-ring" />
-            <circle r="3" className="map-station-core" />
-            <text x="12" y="-8">AUCKLAND</text>
-          </g>
+          {coastlines.map((points, index) => (
+            <polyline key={`coast-${index}`} points={points} className="globe-coast" />
+          ))}
 
-          {satellitePoint && current && (
-            <g
-              className="map-satellite"
-              style={{ transform: `translate(${satellitePoint.x}px, ${satellitePoint.y}px)` }}
-            >
-              <circle r="17" className="map-satellite-halo" />
-              <rect x="-5" y="-4" width="10" height="8" rx="2" className="map-sat-body" />
-              <rect x="-18" y="-3" width="10" height="6" rx="1" className="map-sat-panel" />
-              <rect x="8" y="-3" width="10" height="6" rx="1" className="map-sat-panel" />
-              <text x="23" y="-9">{current.name}</text>
-              <text x="23" y="6" className="sub">SUB-SATELLITE POINT</text>
+          {trackSegments.map((points, index) => (
+            <polyline key={`track-${index}`} points={points} className="globe-track-line" />
+          ))}
+
+          {stationPoint.visible && (
+            <g transform={`translate(${stationPoint.x} ${stationPoint.y})`} className="globe-station">
+              <circle r="10" className="globe-station-ring" />
+              <circle r="3.2" className="globe-station-core" />
+              <text x="13" y="-8">AUCKLAND</text>
             </g>
           )}
+
+          {subpoint?.visible && current && (
+            <>
+              <circle cx={subpoint.x} cy={subpoint.y} r="6" className="subpoint-dot" />
+              {satellitePoint && (
+                <>
+                  <line x1={subpoint.x} y1={subpoint.y} x2={satellitePoint.x} y2={satellitePoint.y} className="subpoint-beam" />
+                  <g transform={`translate(${satellitePoint.x} ${satellitePoint.y})`} className="globe-satellite">
+                    <circle r="18" className="globe-satellite-halo" />
+                    <rect x="-6" y="-5" width="12" height="10" rx="2" className="globe-sat-body" />
+                    <rect x="-22" y="-4" width="12" height="8" rx="1" className="globe-sat-panel" />
+                    <rect x="10" y="-4" width="12" height="8" rx="1" className="globe-sat-panel" />
+                    <text x="28" y="-8">{current.name}</text>
+                    <text x="28" y="7" className="sub">{current.altitudeKm.toFixed(0)} km altitude</text>
+                  </g>
+                </>
+              )}
+            </>
+          )}
+
+          <text x="26" y="31" className="globe-hint">DRAG TO ROTATE · ORTHOGRAPHIC EARTH VIEW</text>
+          <text x="26" y="49" className="globe-hint sub">cyan trail = ±10–30 min ground track</text>
         </svg>
       </div>
 
       <div className="earth-location-readout">
         <div>
-          <span>SUBPOINT</span>
+          <span>SUB-SATELLITE POINT</span>
           <strong>{current ? `${formatLat(current.subLatDeg)} · ${formatLon(current.subLonDeg)}` : '—'}</strong>
         </div>
         <div>
@@ -141,15 +264,15 @@ export default function EarthTrack({ current, station, track }: Props) {
           <strong>{current ? `${current.altitudeKm.toFixed(1)} km` : '—'}</strong>
         </div>
         <div>
-          <span>OBSERVER</span>
-          <strong>Auckland · NZ</strong>
+          <span>VIEW CENTER</span>
+          <strong>{formatLat(centerLat)} · {formatLon(centerLon)}</strong>
         </div>
       </div>
 
       <div className="track-key">
-        <span><i className="past" /> past / future ground track</span>
-        <span><i className="station" /> ground station</span>
-        <span><i className="satellite" /> satellite subpoint</span>
+        <span><i className="past" /> ground track</span>
+        <span><i className="station" /> Auckland</span>
+        <span><i className="satellite" /> satellite + subpoint</span>
       </div>
     </section>
   );
