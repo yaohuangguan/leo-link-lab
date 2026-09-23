@@ -18,7 +18,7 @@ type Props = {
 
 type ViewMode = 'observer' | 'satellite' | 'globe';
 
-const SATELLITE_TILES = 'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/g/{z}/{y}/{x}.jpg';
+const SATELLITE_TILES = 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 const BASE_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
 const TERRAIN_TILEJSON = 'https://tiles.mapterhorn.com/tilejson.json';
 
@@ -133,22 +133,24 @@ export default function EarthTrack({ current, station, stationLabel, track }: Pr
           type: 'raster',
           tiles: [SATELLITE_TILES],
           tileSize: 256,
-          attribution: 'Satellite imagery: EOX Sentinel-2 cloudless',
+          attribution: 'Imagery © Esri, Vantor, Earthstar Geographics, and the GIS User Community',
           maxzoom: 14,
         });
 
         const layers = map.getStyle().layers || [];
-        const firstNonFill = layers.find(layer => layer.type !== 'background' && layer.type !== 'fill')?.id;
+        const firstSymbol = layers.find(layer => layer.type === 'symbol')?.id;
         map.addLayer({
           id: 'satellite-imagery-layer',
           type: 'raster',
           source: 'satellite-imagery',
           paint: {
-            'raster-opacity': 0.92,
-            'raster-saturation': -0.05,
-            'raster-contrast': 0.08,
+            'raster-opacity': 1,
+            'raster-saturation': 0,
+            'raster-contrast': 0,
+            'raster-brightness-min': 0,
+            'raster-brightness-max': 1,
           },
-        }, firstNonFill);
+        }, firstSymbol);
       }
 
       if (!map.getSource('terrain-source')) {
@@ -345,8 +347,8 @@ export default function EarthTrack({ current, station, stationLabel, track }: Pr
       </div>
 
       <div className="earth-view-note">
-        Satellite imagery base is a cloudless Sentinel-2 mosaic, not live photography. Observer position,
-        satellite subpoint and ground track are the live layers.
+        World Imagery is a geographic basemap, not live photography. Observer position, satellite subpoint
+        and ground track are the live layers.
       </div>
     </section>
   );
