@@ -12,6 +12,8 @@ const REFRESH_MS = 2 * 60 * 60 * 1000;
 const CACHE_TTL_SECONDS = 24 * 60 * 60;
 const CACHE_KEY = new Request('https://leo-link-lab.internal/cache/starlink');
 const FALLBACK_FETCHED_AT = Date.now();
+const GEOCODE_TTL_SECONDS = 30 * 24 * 60 * 60;
+const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 
 function cors(env: Env) {
   return {
@@ -72,12 +74,65 @@ function sampleEvenly<T>(items: T[], limit: number) {
   return Array.from({ length: limit }, (_, i) => items[Math.floor(i * stride)]);
 }
 
+async function geocode(query: string) {
+  const normalized = query.trim().replace(/\s+/g, ' ');
+  const cacheKey = new Request(`https://leo-link-lab.internal/cache/geocode?q=${encodeURIComponent(normalized.toLowerCase())}`);
+  const cached = await caches.default.match(cacheKey);
+  if (cached) return cached;
+
+  const target = new URL(NOMINATIM);
+  target.searchParams.set('q', normalized);
+  target.searchParams.set('format', 'jsonv2');
+  target.searchParams.set('limit', '5');
+
+  const response = await fetch(target.toString(), {
+    signal: AbortSignal.timeout(8000),
+    headers: {
+      'User-Agent': 'LEO-Link-Lab/1.0 (+https://leo-link-lab.719919153.workers.dev)',
+      'Referer': 'https://leo-link-lab.719919153.workers.dev/',
+      'Accept-Language': 'en',
+    },
+  });
+  if (!response.ok) throw new Error(`Geocoder returned HTTP ${response.status}`);
+
+  const data = await response.json<Array<{ display_name: string; lat: string; lon: string }>>();
+  const results = data.map(item => ({
+    label: item.display_name,
+    latDeg: Number(item.lat),
+    lonDeg: Number(item.lon),
+  })).filter(item => Number.isFinite(item.latDeg) && Number.isFinite(item.lonDeg));
+
+  const result = Response.json({ results }, {
+    headers: { 'Cache-Control': `public, max-age=${GEOCODE_TTL_SECONDS}` },
+  });
+  await caches.default.put(cacheKey, result.clone());
+  return result;
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const headers = cors(env);
     if (request.method === 'OPTIONS') return new Response(null, { headers });
     if (url.pathname === '/health') return Response.json({ ok: true }, { headers });
+
+    if (url.pathname === '/api/geocode') {
+      const query = (url.searchParams.get('q') || '').trim();
+      if (query.length < 2 || query.length > 120) {
+        return Response.json({ error: 'Search query must be 2–120 characters.' }, { status: 400, headers });
+      }
+      try {
+        const response = await geocode(query);
+        const body = await response.text();
+        return new Response(body, {
+          status: response.status,
+          headers: { ...headers, 'Content-Type': 'application/json', 'Cache-Control': response.headers.get('Cache-Control') || 'public, max-age=86400' },
+        });
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : 'Geocoding failed' }, { status: 502, headers });
+      }
+    }
+
     if (url.pathname !== '/api/starlink') return Response.json({ error: 'Not found' }, { status: 404, headers });
 
     const requested = Number(url.searchParams.get('limit') || '900');
