@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import type { SatelliteLink } from '../types';
 
 type Props = {
@@ -10,6 +11,7 @@ const HEIGHT = 560;
 const HORIZON = 455;
 const GROUND_X = 455;
 const GROUND_Y = 463;
+const FRAME_MS = 1050;
 
 const stars = Array.from({ length: 92 }, (_, index) => ({
   x: (index * 83 + 37) % WIDTH,
@@ -32,10 +34,67 @@ function signalTone(snr: number) {
   return 'weak';
 }
 
-function SatelliteGlyph({ x, y, active, tone }: { x: number; y: number; active: boolean; tone: string }) {
+function lerp(from: number, to: number, alpha: number) {
+  return from + (to - from) * alpha;
+}
+
+function lerpAngle(from: number, to: number, alpha: number) {
+  const delta = ((to - from + 540) % 360) - 180;
+  return (from + delta * alpha + 360) % 360;
+}
+
+function interpolate(from: SatelliteLink | undefined, to: SatelliteLink, alpha: number): SatelliteLink {
+  if (!from) return to;
+  return {
+    ...to,
+    azimuthDeg: lerpAngle(from.azimuthDeg, to.azimuthDeg, alpha),
+    elevationDeg: lerp(from.elevationDeg, to.elevationDeg, alpha),
+    rangeKm: lerp(from.rangeKm, to.rangeKm, alpha),
+    snrDb: lerp(from.snrDb, to.snrDb, alpha),
+    subLatDeg: lerp(from.subLatDeg, to.subLatDeg, alpha),
+    subLonDeg: lerpAngle(from.subLonDeg, to.subLonDeg, alpha),
+    altitudeKm: lerp(from.altitudeKm, to.altitudeKm, alpha),
+  };
+}
+
+function useSmoothSatellites(target: SatelliteLink[]) {
+  const [display, setDisplay] = useState(target);
+  const displayRef = useRef(target);
+  const previousRef = useRef(target);
+  const targetRef = useRef(target);
+  const startRef = useRef(performance.now());
+  const frameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    previousRef.current = displayRef.current;
+    targetRef.current = target;
+    startRef.current = performance.now();
+
+    if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
+
+    const tick = (timestamp: number) => {
+      const alpha = Math.min(1, (timestamp - startRef.current) / FRAME_MS);
+      const previousById = new Map(previousRef.current.map(satellite => [satellite.noradId, satellite]));
+      const next = targetRef.current.map(satellite => interpolate(previousById.get(satellite.noradId), satellite, alpha));
+      displayRef.current = next;
+      setDisplay(next);
+
+      if (alpha < 1) frameRef.current = requestAnimationFrame(tick);
+    };
+
+    frameRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
+    };
+  }, [target]);
+
+  return display;
+}
+
+function SatelliteGlyph({ active, tone }: { active: boolean; tone: string }) {
   const scale = active ? 1.08 : .72;
   return (
-    <g transform={`translate(${x} ${y}) scale(${scale})`} className={`orbital-satellite ${tone} ${active ? 'active' : ''}`}>
+    <g transform={`scale(${scale})`} className={`orbital-satellite ${tone} ${active ? 'active' : ''}`}>
       {active && <circle r="24" className="satellite-halo" />}
       <rect x="-9" y="-7" width="18" height="14" rx="3" className="satellite-body" />
       <rect x="-31" y="-5" width="18" height="10" rx="1.5" className="solar-panel" />
@@ -48,7 +107,8 @@ function SatelliteGlyph({ x, y, active, tone }: { x: number; y: number; active: 
 }
 
 export default function SkyPlot({ satellites, selectedNoradId }: Props) {
-  const active = satellites.find(satellite => satellite.noradId === selectedNoradId);
+  const smoothSatellites = useSmoothSatellites(satellites.slice(0, 18));
+  const active = smoothSatellites.find(satellite => satellite.noradId === selectedNoradId);
   const activePoint = active ? projectSatellite(active) : null;
 
   return (
@@ -60,7 +120,7 @@ export default function SkyPlot({ satellites, selectedNoradId }: Props) {
         </div>
         <div className="orbital-title-meta">
           <span>{satellites.length} visible</span>
-          <span className="live-pill"><i /> LIVE</span>
+          <span className="live-pill"><i /> 60 FPS VIEW</span>
         </div>
       </div>
 
@@ -78,23 +138,18 @@ export default function SkyPlot({ satellites, selectedNoradId }: Props) {
               <stop offset="100%" stopColor="#04101a" />
             </radialGradient>
             <linearGradient id="beamGradient" x1="0" y1="1" x2="0" y2="0">
-              <stop offset="0%" stopColor="#68e4ff" stopOpacity=".62" />
-              <stop offset="100%" stopColor="#68e4ff" stopOpacity=".03" />
+              <stop offset="0%" stopColor="#68e4ff" stopOpacity=".64" />
+              <stop offset="100%" stopColor="#68e4ff" stopOpacity=".04" />
             </linearGradient>
             <filter id="beamGlow">
               <feGaussianBlur stdDeviation="5" result="blur" />
               <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
             </filter>
-            <filter id="earthGlow">
-              <feGaussianBlur stdDeviation="10" />
-            </filter>
+            <filter id="earthGlow"><feGaussianBlur stdDeviation="10" /></filter>
           </defs>
 
           <rect width={WIDTH} height={HEIGHT} rx="20" fill="url(#spaceFade)" />
-
-          {stars.map((star, index) => (
-            <circle key={index} cx={star.x} cy={star.y} r={star.r} fill="#c9ecff" opacity={star.opacity} />
-          ))}
+          {stars.map((star, index) => <circle key={index} cx={star.x} cy={star.y} r={star.r} fill="#c9ecff" opacity={star.opacity} />)}
 
           <path d="M 18 355 Q 246 145 470 335 T 902 294" className="orbit-track orbit-one" />
           <path d="M -12 286 Q 230 474 470 222 T 934 262" className="orbit-track orbit-two" />
@@ -103,12 +158,7 @@ export default function SkyPlot({ satellites, selectedNoradId }: Props) {
           <g className="azimuth-ruler">
             {['N 0°','E 90°','S 180°','W 270°','N 360°'].map((label, index) => {
               const x = 62 + index * ((WIDTH - 124) / 4);
-              return (
-                <g key={label}>
-                  <line x1={x} y1="420" x2={x} y2="431" />
-                  <text x={x} y="414" textAnchor="middle">{label}</text>
-                </g>
-              );
+              return <g key={label}><line x1={x} y1="420" x2={x} y2="431" /><text x={x} y="414" textAnchor="middle">{label}</text></g>;
             })}
           </g>
 
@@ -124,17 +174,17 @@ export default function SkyPlot({ satellites, selectedNoradId }: Props) {
             </>
           )}
 
-          {satellites.slice(0, 18).map(satellite => {
+          {smoothSatellites.map(satellite => {
             const point = projectSatellite(satellite);
             const isActive = satellite.noradId === selectedNoradId;
             return (
-              <g key={satellite.noradId}>
-                <SatelliteGlyph x={point.x} y={point.y} active={isActive} tone={signalTone(satellite.snrDb)} />
+              <g key={satellite.noradId} transform={`translate(${point.x} ${point.y})`}>
+                <SatelliteGlyph active={isActive} tone={signalTone(satellite.snrDb)} />
                 {isActive && (
                   <g className="active-sat-label">
-                    <rect x={point.x + 30} y={point.y - 28} width="152" height="43" rx="8" />
-                    <text x={point.x + 42} y={point.y - 11}>{satellite.name}</text>
-                    <text x={point.x + 42} y={point.y + 4} className="sub">{satellite.elevationDeg.toFixed(1)}° EL · {satellite.snrDb.toFixed(1)} dB</text>
+                    <rect x="30" y="-28" width="152" height="43" rx="8" />
+                    <text x="42" y="-11">{satellite.name}</text>
+                    <text x="42" y="4" className="sub">{satellite.elevationDeg.toFixed(1)}° EL · {satellite.snrDb.toFixed(1)} dB</text>
                   </g>
                 )}
               </g>
