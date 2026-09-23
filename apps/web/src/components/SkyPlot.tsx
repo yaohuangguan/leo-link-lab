@@ -5,87 +5,165 @@ type Props = {
   selectedNoradId?: string;
 };
 
-const SIZE = 520;
-const CENTER = SIZE / 2;
-const EDGE = SIZE / 2 - 34;
+const WIDTH = 920;
+const HEIGHT = 560;
+const HORIZON = 455;
+const GROUND_X = 455;
+const GROUND_Y = 463;
 
-function polarToCartesian(azimuthDeg: number, elevationDeg: number) {
-  const radius = ((90 - Math.max(0, elevationDeg)) / 90) * EDGE;
-  const angle = (azimuthDeg - 90) * Math.PI / 180;
-  return {
-    x: CENTER + radius * Math.cos(angle),
-    y: CENTER + radius * Math.sin(angle),
-  };
+const stars = Array.from({ length: 92 }, (_, index) => ({
+  x: (index * 83 + 37) % WIDTH,
+  y: (index * 47 + 29) % 360,
+  r: index % 7 === 0 ? 1.6 : index % 3 === 0 ? 1.1 : .7,
+  opacity: .22 + ((index * 17) % 55) / 100,
+}));
+
+function projectSatellite(satellite: SatelliteLink) {
+  const x = 62 + (satellite.azimuthDeg / 360) * (WIDTH - 124);
+  const elevation = Math.max(0, Math.min(90, satellite.elevationDeg));
+  const y = HORIZON - 48 - Math.pow(elevation / 90, .78) * 330;
+  return { x, y };
 }
 
-function tone(snr: number) {
+function signalTone(snr: number) {
   if (snr >= 12) return 'excellent';
   if (snr >= 6) return 'good';
   if (snr >= 2) return 'fair';
   return 'weak';
 }
 
-export default function SkyPlot({ satellites, selectedNoradId }: Props) {
+function SatelliteGlyph({ x, y, active, tone }: { x: number; y: number; active: boolean; tone: string }) {
+  const scale = active ? 1.08 : .72;
   return (
-    <section className="panel sky-panel">
-      <div className="panel-title-row">
+    <g transform={`translate(${x} ${y}) scale(${scale})`} className={`orbital-satellite ${tone} ${active ? 'active' : ''}`}>
+      {active && <circle r="24" className="satellite-halo" />}
+      <rect x="-9" y="-7" width="18" height="14" rx="3" className="satellite-body" />
+      <rect x="-31" y="-5" width="18" height="10" rx="1.5" className="solar-panel" />
+      <rect x="13" y="-5" width="18" height="10" rx="1.5" className="solar-panel" />
+      <line x1="-13" y1="0" x2="-9" y2="0" className="satellite-arm" />
+      <line x1="9" y1="0" x2="13" y2="0" className="satellite-arm" />
+      <path d="M -4 -8 L 0 -15 L 4 -8" className="satellite-antenna" />
+    </g>
+  );
+}
+
+export default function SkyPlot({ satellites, selectedNoradId }: Props) {
+  const active = satellites.find(satellite => satellite.noradId === selectedNoradId);
+  const activePoint = active ? projectSatellite(active) : null;
+
+  return (
+    <section className="panel orbital-theater">
+      <div className="panel-title-row orbital-title">
         <div>
-          <p className="eyebrow">LIVE SKY VIEW</p>
-          <h2>Satellite geometry</h2>
+          <p className="eyebrow">ORBITAL THEATER</p>
+          <h2>Auckland uplink · live constellation</h2>
         </div>
-        <span className="live-pill"><i /> Auckland</span>
+        <div className="orbital-title-meta">
+          <span>{satellites.length} visible</span>
+          <span className="live-pill"><i /> LIVE</span>
+        </div>
       </div>
 
-      <div className="sky-stage">
-        <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="skyplot" role="img" aria-label="Visible satellites over Auckland">
+      <div className="orbital-stage">
+        <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="orbital-svg" role="img" aria-label="LEO satellites above Auckland">
           <defs>
-            <radialGradient id="skyGlow">
-              <stop offset="0%" stopColor="#17384b" stopOpacity=".9" />
-              <stop offset="68%" stopColor="#0c2231" stopOpacity=".36" />
-              <stop offset="100%" stopColor="#07141e" stopOpacity=".06" />
+            <linearGradient id="spaceFade" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#02070d" />
+              <stop offset="62%" stopColor="#06131f" />
+              <stop offset="100%" stopColor="#0b2231" />
+            </linearGradient>
+            <radialGradient id="earthFill" cx="50%" cy="0%">
+              <stop offset="0%" stopColor="#153c4e" />
+              <stop offset="55%" stopColor="#0a2230" />
+              <stop offset="100%" stopColor="#04101a" />
             </radialGradient>
+            <linearGradient id="beamGradient" x1="0" y1="1" x2="0" y2="0">
+              <stop offset="0%" stopColor="#68e4ff" stopOpacity=".62" />
+              <stop offset="100%" stopColor="#68e4ff" stopOpacity=".03" />
+            </linearGradient>
+            <filter id="beamGlow">
+              <feGaussianBlur stdDeviation="5" result="blur" />
+              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+            <filter id="earthGlow">
+              <feGaussianBlur stdDeviation="10" />
+            </filter>
           </defs>
 
-          <circle cx={CENTER} cy={CENTER} r={EDGE} fill="url(#skyGlow)" className="sky-boundary" />
-          {[30, 60].map(elevation => {
-            const r = ((90 - elevation) / 90) * EDGE;
-            return <circle key={elevation} cx={CENTER} cy={CENTER} r={r} className="sky-ring" />;
-          })}
-          <line x1={CENTER} y1={34} x2={CENTER} y2={SIZE - 34} className="sky-axis" />
-          <line x1={34} y1={CENTER} x2={SIZE - 34} y2={CENTER} className="sky-axis" />
-          <text x={CENTER} y={25} textAnchor="middle" className="sky-label">N</text>
-          <text x={CENTER} y={SIZE - 10} textAnchor="middle" className="sky-label">S</text>
-          <text x={SIZE - 14} y={CENTER + 4} textAnchor="middle" className="sky-label">E</text>
-          <text x={14} y={CENTER + 4} textAnchor="middle" className="sky-label">W</text>
+          <rect width={WIDTH} height={HEIGHT} rx="20" fill="url(#spaceFade)" />
 
-          <g className="observer-mark">
-            <circle cx={CENTER} cy={CENTER} r="14" />
-            <circle cx={CENTER} cy={CENTER} r="4" />
+          {stars.map((star, index) => (
+            <circle key={index} cx={star.x} cy={star.y} r={star.r} fill="#c9ecff" opacity={star.opacity} />
+          ))}
+
+          <path d="M 18 355 Q 246 145 470 335 T 902 294" className="orbit-track orbit-one" />
+          <path d="M -12 286 Q 230 474 470 222 T 934 262" className="orbit-track orbit-two" />
+          <path d="M 90 168 Q 402 390 820 132" className="orbit-track orbit-three" />
+
+          <g className="azimuth-ruler">
+            {['N 0°','E 90°','S 180°','W 270°','N 360°'].map((label, index) => {
+              const x = 62 + index * ((WIDTH - 124) / 4);
+              return (
+                <g key={label}>
+                  <line x1={x} y1="420" x2={x} y2="431" />
+                  <text x={x} y="414" textAnchor="middle">{label}</text>
+                </g>
+              );
+            })}
           </g>
 
-          {satellites.map(sat => {
-            const { x, y } = polarToCartesian(sat.azimuthDeg, sat.elevationDeg);
-            const active = sat.noradId === selectedNoradId;
+          {activePoint && (
+            <>
+              <polygon
+                points={`${GROUND_X - 18},${GROUND_Y} ${GROUND_X + 18},${GROUND_Y} ${activePoint.x + 8},${activePoint.y + 10} ${activePoint.x - 8},${activePoint.y + 10}`}
+                fill="url(#beamGradient)"
+                className="uplink-beam"
+                filter="url(#beamGlow)"
+              />
+              <line x1={GROUND_X} y1={GROUND_Y} x2={activePoint.x} y2={activePoint.y} className="uplink-center" />
+            </>
+          )}
+
+          {satellites.slice(0, 18).map(satellite => {
+            const point = projectSatellite(satellite);
+            const isActive = satellite.noradId === selectedNoradId;
             return (
-              <g key={sat.noradId} className={`sat-dot ${tone(sat.snrDb)} ${active ? 'active' : ''}`}>
-                {active && <circle cx={x} cy={y} r="16" className="pulse-ring" />}
-                <circle cx={x} cy={y} r={active ? 7 : 4.6} className="sat-core" />
-                {active && (
-                  <>
-                    <line x1={CENTER} y1={CENTER} x2={x} y2={y} className="link-line" />
-                    <text x={x + 13} y={y - 13} className="sat-name">{sat.name}</text>
-                  </>
+              <g key={satellite.noradId}>
+                <SatelliteGlyph x={point.x} y={point.y} active={isActive} tone={signalTone(satellite.snrDb)} />
+                {isActive && (
+                  <g className="active-sat-label">
+                    <rect x={point.x + 30} y={point.y - 28} width="152" height="43" rx="8" />
+                    <text x={point.x + 42} y={point.y - 11}>{satellite.name}</text>
+                    <text x={point.x + 42} y={point.y + 4} className="sub">{satellite.elevationDeg.toFixed(1)}° EL · {satellite.snrDb.toFixed(1)} dB</text>
+                  </g>
                 )}
               </g>
             );
           })}
+
+          <ellipse cx={WIDTH / 2} cy="650" rx="545" ry="235" className="earth-atmosphere" filter="url(#earthGlow)" />
+          <ellipse cx={WIDTH / 2} cy="650" rx="535" ry="225" fill="url(#earthFill)" className="earth-body" />
+          <ellipse cx={WIDTH / 2} cy="650" rx="535" ry="225" className="earth-grid" />
+
+          <g className="ground-station" transform={`translate(${GROUND_X} ${GROUND_Y})`}>
+            <circle r="18" className="ground-halo" />
+            <path d="M -11 10 L 0 -7 L 11 10 Z" className="station-mast" />
+            <path d="M -14 -2 Q 0 -16 14 -2" className="station-dish" />
+            <circle cy="-4" r="3" className="station-core" />
+            <text x="27" y="-8">AUCKLAND</text>
+            <text x="27" y="8" className="sub">36.85°S · 174.76°E</text>
+          </g>
+
+          <g className="earth-caption">
+            <text x="28" y="520">GROUND SEGMENT</text>
+            <text x="28" y="538" className="sub">New Zealand · sea level observer</text>
+          </g>
         </svg>
 
-        <div className="sky-legend">
-          <span><i className="excellent" /> ≥12 dB</span>
-          <span><i className="good" /> ≥6 dB</span>
-          <span><i className="fair" /> ≥2 dB</span>
-          <span><i className="weak" /> weak</span>
+        <div className="orbital-overlay">
+          <div><span>ACTIVE BEAM</span><strong>{active?.name ?? 'SEARCHING'}</strong></div>
+          <div><span>ELEVATION</span><strong>{active ? `${active.elevationDeg.toFixed(1)}°` : '—'}</strong></div>
+          <div><span>LINK RANGE</span><strong>{active ? `${active.rangeKm.toFixed(0)} km` : '—'}</strong></div>
         </div>
       </div>
     </section>
