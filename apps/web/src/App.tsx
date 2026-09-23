@@ -41,7 +41,6 @@ const sections = [
   ['metrics', 'Metrics'],
   ['satellites', 'Satellites'],
   ['rf', 'RF model'],
-  ['settings', 'Settings'],
 ] as const;
 
 function initialObserver(): ObserverLocation {
@@ -285,9 +284,29 @@ export default function App() {
         <nav className="main-nav" aria-label="Page sections">
           {sections.map(([id, label]) => <a key={id} href={`#${id}`}>{t(label)}</a>)}
         </nav>
-        <div className="live-summary">
-          <i className={error ? 'error' : ''} />
-          <span>{error ? t('Data error') : t('{count} visible · {place}', { count: visible.length, place: placeShort })}</span>
+        <div className="header-right">
+          <div className="live-summary">
+            <i className={error ? 'error' : ''} />
+            <span>{error ? t('Data error') : t('{count} visible · {place}', { count: visible.length, place: placeShort })}</span>
+          </div>
+          <div className="header-language-toggle" role="group" aria-label={t('Interface language')}>
+            <button
+              type="button"
+              className={language === 'en' ? 'active' : ''}
+              onClick={() => setLanguage('en')}
+              aria-pressed={language === 'en'}
+            >
+              EN
+            </button>
+            <button
+              type="button"
+              className={language === 'zh' ? 'active' : ''}
+              onClick={() => setLanguage('zh')}
+              aria-pressed={language === 'zh'}
+            >
+              中文
+            </button>
+          </div>
         </div>
       </header>
 
@@ -409,26 +428,6 @@ export default function App() {
               <span>{t('Current time')}</span>
               <strong>{now.toISOString().replace('T', ' ').slice(0, 19)} UTC</strong>
               {error && <strong className="error-text">{error}</strong>}
-            </div>
-          </section>
-        </section>
-
-        <section id="settings" className="page-section">
-          <SectionHeading
-            kicker={t('SETTINGS')}
-            title={t('Language')}
-            description={t('Choose the interface language. This preference is saved in this browser.')}
-          />
-          <section className="panel settings-panel">
-            <div className="setting-row">
-              <div>
-                <span>{t('Interface language')}</span>
-                <strong>{language === 'zh' ? '中文' : 'English'}</strong>
-              </div>
-              <div className="language-toggle" role="group" aria-label={t('Interface language')}>
-                <button type="button" className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>{t('English')}</button>
-                <button type="button" className={language === 'zh' ? 'active' : ''} onClick={() => setLanguage('zh')}>{t('中文')}</button>
-              </div>
             </div>
           </section>
         </section>

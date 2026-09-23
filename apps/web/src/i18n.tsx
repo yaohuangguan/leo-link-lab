@@ -217,6 +217,10 @@ const I18nContext = createContext<I18nValue | null>(null);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>(() => {
+    const urlLanguage = new URL(window.location.href).searchParams.get('lang');
+    if (urlLanguage === 'cn' || urlLanguage === 'zh') return 'zh';
+    if (urlLanguage === 'en') return 'en';
+
     const saved = window.localStorage.getItem('leo-link-language');
     return saved === 'zh' ? 'zh' : 'en';
   });
@@ -224,6 +228,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     window.localStorage.setItem('leo-link-language', language);
     document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en';
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('lang', language === 'zh' ? 'cn' : 'en');
+    window.history.replaceState({}, '', url);
   }, [language]);
 
   const value = useMemo<I18nValue>(() => ({
