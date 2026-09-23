@@ -17,7 +17,7 @@ const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 const ESRI_IMAGERY = 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile';
 const ESRI_LABELS = 'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile';
 const IMAGERY_CACHE_SECONDS = 7 * 24 * 60 * 60;
-const ACTIVE_SOURCE = 'https://celestrak.org/NORAD/elements/gp.php?GROUP=ACTIVE&FORMAT=JSON';
+const ACTIVE_SOURCE = 'https://raw.githubusercontent.com/satvisorcom/satvisor-data/master/celestrak/json/active.json';
 const ACTIVE_CACHE_KEY = new Request('https://leo-link-lab.internal/cache/active-satellites');
 
 function cors(env: Env) {
