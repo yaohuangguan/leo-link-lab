@@ -15,9 +15,11 @@ Interactive LEO satellite communication lab using real Starlink orbital data.
 
 ## Architecture
 
-- `apps/web`: React + Vite + TypeScript, intended for Vercel
-- `apps/worker`: Cloudflare Worker proxy/cache for CelesTrak GP JSON
+- `apps/web`: React + Vite + TypeScript, served as Cloudflare Static Assets
+- `apps/worker`: Cloudflare Worker API/cache for CelesTrak orbital data
 - `packages/core`: RF calculations and tests
+
+The production app and API are deployed together as one Cloudflare Worker. Static files are served directly from Cloudflare's asset layer; only `/api/*` and `/health` invoke Worker code.
 
 ## Local development
 
@@ -27,13 +29,21 @@ npm run dev:worker
 npm run dev:web
 ```
 
-The web app defaults to `http://localhost:8787` for its API.
+Vite proxies `/api` and `/health` to the local Worker on port 8791.
+
+## Build and deploy
+
+```bash
+npm run build
+npm run deploy:cloudflare
+```
+
+Production: `https://leo-link-lab.719919153.workers.dev`
 
 ## Roadmap
 
-1. Rain attenuation
-2. SINR and interference sources
-3. Handover hysteresis + time-to-trigger
-4. LEO/MEO/GEO comparison mode
-5. Web Worker propagation for larger constellations
-6. Optional RTL-SDR companion lab
+1. Rain attenuation and SINR
+2. Handover hysteresis + time-to-trigger
+3. LEO/MEO/GEO comparison mode
+4. Full-constellation Web Worker propagation
+5. Optional RTL-SDR companion lab

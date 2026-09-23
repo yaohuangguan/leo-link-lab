@@ -11,7 +11,7 @@ const HEIGHT = 640;
 const GROUND_X = 612;
 const GROUND_Y = 468;
 const FRAME_MS = 1050;
-const EARTH_IMAGE = 'https://svs.gsfc.nasa.gov/vis/a030000/a031100/a031115/airglow-australia_print.jpg';
+const EARTH_IMAGE = '/earth/airglow-australia.jpg';
 
 function projectSatellite(satellite: SatelliteLink) {
   const az = satellite.azimuthDeg / 360;

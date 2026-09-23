@@ -8,7 +8,7 @@ import PassTimeline from './components/PassTimeline';
 import { useMetricHistory } from './hooks/useMetricHistory';
 import type { OmmRecord, RadioConfig, SatelliteLink } from './types';
 
-const API = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8791';
+const API = import.meta.env.VITE_API_BASE_URL || '';
 const station = { latDeg: -36.8485, lonDeg: 174.7633 };
 const initialRadio: RadioConfig = {
   frequencyGHz: 12,

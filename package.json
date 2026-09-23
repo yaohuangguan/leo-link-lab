@@ -7,7 +7,8 @@
     "dev:web": "npm run dev -w @leo/web",
     "dev:worker": "npm run dev -w @leo/worker",
     "build": "npm run build -w @leo/web && npm run build -w @leo/worker",
-    "test": "npm run test -w @leo/core"
+    "test": "npm run test -w @leo/core",
+    "deploy:cloudflare": "npm run build -w @leo/web && npm run deploy -w @leo/worker"
   },
   "engines": { "node": ">=20" }
 }
