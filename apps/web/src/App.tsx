@@ -5,6 +5,7 @@ import EarthTrack from './components/EarthTrack';
 import Sparkline from './components/Sparkline';
 import HandoverPanel from './components/HandoverPanel';
 import PassTimeline from './components/PassTimeline';
+import LinkBudgetPanel from './components/LinkBudgetPanel';
 import { useMetricHistory } from './hooks/useMetricHistory';
 import type { OmmRecord, RadioConfig, SatelliteLink } from './types';
 
@@ -28,6 +29,7 @@ const fmt = (n: number, digits = 1) => Number.isFinite(n) ? n.toFixed(digits) : 
 const sections = [
   ['overview', 'Overview'],
   ['link', 'Current link'],
+  ['budget', 'Link budget'],
   ['pass', 'Pass & handover'],
   ['metrics', 'Metrics'],
   ['satellites', 'Satellites'],
@@ -99,6 +101,20 @@ export default function App() {
     }).filter((point): point is { latDeg: number; lonDeg: number; offsetMin: number } => point !== null);
   }, [activeRecord, radio, predictionTick]);
 
+  const skyTrack = useMemo(() => {
+    if (!activeRecord) return [];
+    const start = predictionTick * 10_000;
+    return Array.from({ length: 13 }, (_, index) => {
+      const seconds = index * 30;
+      const link = computeLink(activeRecord, station, radio, new Date(start + seconds * 1000));
+      return link ? {
+        azimuthDeg: link.azimuthDeg,
+        elevationDeg: link.elevationDeg,
+        seconds,
+      } : null;
+    }).filter((point): point is { azimuthDeg: number; elevationDeg: number; seconds: number } => point !== null);
+  }, [activeRecord, radio, predictionTick]);
+
   const update = (key: keyof RadioConfig, value: number) => {
     setRadio(current => ({ ...current, [key]: value }));
   };
@@ -127,18 +143,18 @@ export default function App() {
       <main className="console-main">
         <section id="overview" className="page-section overview-section">
           <SectionHeading
-            kicker="LIVE ORBIT"
-            title="See the link before you read the numbers."
-            description="The main view is purely spatial: real Earth imagery, the Auckland ground station, visible satellites, orbital paths and the active uplink."
+            kicker="SKY GEOMETRY"
+            title="Where is the active satellite in Auckland's sky?"
+            description="This is a local sky plot, not a map of Earth. The outer circle is the horizon, the center is directly overhead, and the cyan trail predicts the active satellite's next few minutes."
           />
-          <SkyPlot satellites={visible.slice(0, 40)} selectedNoradId={best?.noradId} />
+          <SkyPlot current={best} track={skyTrack} />
         </section>
 
         <section id="link" className="page-section">
           <SectionHeading
             kicker="CURRENT CONNECTION"
             title="Where the satellite is, and what the link is doing."
-            description="The left panel explains the RF link. The globe answers the separate geographic question: what part of Earth the satellite is currently above."
+            description="Current Link shows the live radio and geometry values. The globe separately shows the satellite's geographic subpoint on Earth, so sky direction and Earth location are never mixed."
           />
           <div className="two-column-section link-section-grid">
             <CurrentLinkPanel current={best} radio={radio} />
@@ -146,11 +162,20 @@ export default function App() {
           </div>
         </section>
 
+        <section id="budget" className="page-section">
+          <SectionHeading
+            kicker="SIGNAL JOURNEY"
+            title="Where does the signal power go?"
+            description="This is the live link-budget waterfall. Start with transmitter power, add antenna gains, subtract free-space path loss and other losses, then compare received power with the noise floor to get SNR and link margin."
+          />
+          <LinkBudgetPanel current={best} radio={radio} />
+        </section>
+
         <section id="pass" className="page-section">
           <SectionHeading
             kicker="NEXT FEW MINUTES"
             title="Pass evolution and handover decision."
-            description="Pass prediction shows how elevation changes over time. Handover compares the current link against the strongest alternative."
+            description="Pass prediction shows how elevation changes over time. Handover then compares the current satellite with the strongest alternative using a 3 dB hysteresis rule."
           />
           <div className="two-column-section">
             <PassTimeline samples={passSamples} minElevationDeg={radio.minElevationDeg} satelliteName={best?.name} />
