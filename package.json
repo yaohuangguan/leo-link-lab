@@ -1,0 +1,13 @@
+{
+  "name": "leo-link-lab",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev:web": "npm run dev -w @leo/web",
+    "dev:worker": "npm run dev -w @leo/worker",
+    "build": "npm run build -w @leo/web && npm run build -w @leo/worker",
+    "test": "npm run test -w @leo/core"
+  },
+  "engines": { "node": ">=20" }
+}

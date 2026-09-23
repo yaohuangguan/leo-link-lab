@@ -1,0 +1,38 @@
+:root{
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  color:#dbe8f3;background:#06101b;font-synthesis:none
+}
+*{box-sizing:border-box}
+body{margin:0;min-width:320px;min-height:100vh;background:radial-gradient(circle at 15% 0%,#10283d 0,transparent 28%),#06101b}
+button,input{font:inherit}
+main{width:min(1480px,calc(100% - 40px));margin:auto;padding-bottom:44px}
+header{height:82px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #1d3345}
+header div{font-weight:800;letter-spacing:.13em;font-size:14px}
+header span{color:#66e0ff;margin-left:8px}
+header small{color:#82e9a8;font:600 12px ui-monospace,monospace}
+.hero{padding:56px 0 38px}
+.eyebrow,.card span,label span{color:#70879a;font:600 10px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}
+.hero h1{margin:12px 0 16px;font-size:clamp(38px,5vw,72px);line-height:.98;letter-spacing:-.055em;color:#f4f8fb}
+.hero p{max-width:760px;margin:0;color:#8ca2b4;line-height:1.7}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid #1b3345;background:#091723}
+.card{min-height:118px;padding:22px;display:flex;flex-direction:column;gap:7px;border-right:1px solid #1b3345}
+.card:last-child{border-right:0}
+.card strong{font-size:22px;color:#f0f7fb}
+.card small,.muted{color:#71889b}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:18px;margin-top:18px}
+.panel{border:1px solid #1b3345;background:rgba(8,22,34,.94);padding:22px}
+h2{margin:0 0 6px;font-size:15px}
+.table-wrap{overflow:auto;margin-top:16px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;color:#617c8e;font:600 10px ui-monospace,monospace;letter-spacing:.08em;padding:10px 12px;border-bottom:1px solid #20394b}
+td{padding:11px 12px;border-bottom:1px solid #132a3b;color:#9db1c0;white-space:nowrap}
+td:first-child{color:#d5e4ed}
+.controls{display:flex;flex-direction:column;gap:12px}
+label{display:flex;flex-direction:column;gap:7px}
+input{width:100%;background:#07131e;color:#ddebf4;border:1px solid #263e50;border-radius:6px;padding:10px;outline:none}
+input:focus{border-color:#37caed;box-shadow:0 0 0 2px #37caed1a}
+.equations{margin-top:14px;border-top:1px solid #173044;padding-top:10px}
+.equations div{display:flex;justify-content:space-between;gap:12px;padding:8px 0;color:#728b9d;font-size:12px}
+.equations b{color:#d9e8f1;font-family:ui-monospace,monospace}
+@media(max-width:1000px){.metrics{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}}
+@media(max-width:650px){main{width:min(100% - 24px,1480px)}.metrics{grid-template-columns:1fr}.hero h1{font-size:42px}header small{display:none}}
