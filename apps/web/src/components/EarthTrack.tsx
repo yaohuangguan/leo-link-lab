@@ -22,6 +22,7 @@ const CX = 360;
 const CY = 215;
 const R = 166;
 const DEG = Math.PI / 180;
+const EARTH_TEXTURE = 'https://svs.gsfc.nasa.gov/vis/a030000/a030000/a030028/earthatnight2012_print.jpg';
 
 const continents: GeoPoint[][] = [
   [[-168,72],[-145,68],[-127,56],[-124,42],[-117,32],[-99,19],[-82,25],[-80,36],[-70,45],[-60,53],[-76,63],[-105,72],[-140,70],[-168,72]],
@@ -201,6 +202,9 @@ export default function EarthTrack({ current, station, track }: Props) {
               <stop offset="88%" stopColor="#59ddff" stopOpacity=".12" />
               <stop offset="100%" stopColor="#59ddff" stopOpacity=".45" />
             </radialGradient>
+            <clipPath id="globeClip">
+              <circle cx={CX} cy={CY} r={R} />
+            </clipPath>
             <filter id="globeGlow">
               <feGaussianBlur stdDeviation="9" />
             </filter>
@@ -209,6 +213,17 @@ export default function EarthTrack({ current, station, track }: Props) {
           <circle cx={CX} cy={CY} r={R + 13} fill="#55dfff" opacity=".13" filter="url(#globeGlow)" />
           <circle cx={CX} cy={CY} r={R + 8} fill="url(#globeAtmosphere)" />
           <circle cx={CX} cy={CY} r={R} fill="url(#globeOcean)" className="globe-sphere" />
+          <image
+            href={EARTH_TEXTURE}
+            x={CX - R}
+            y={CY - R}
+            width={R * 2}
+            height={R * 2}
+            preserveAspectRatio="xMidYMid slice"
+            clipPath="url(#globeClip)"
+            className="globe-texture"
+          />
+          <circle cx={CX} cy={CY} r={R} className="globe-night-shade" />
 
           {graticules.map((points, index) => (
             <polyline key={`grid-${index}`} points={points} className="globe-grid" />
