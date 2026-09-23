@@ -435,3 +435,62 @@ h2{margin:0;color:#eef8fb;font-size:20px;line-height:1.2}
   .real-earth-map{height:430px}
   .earth-view-readout{grid-template-columns:1fr}
 }
+
+
+/* Rigorous azimuth-elevation polar sky plot */
+.rigorous-sky-panel{padding:22px}
+.sky-method-note{
+  margin:10px 0 0;padding:11px 13px;border-left:3px solid #5ee9ff;background:#06151e;
+  color:#88a0ac;font-size:12px;line-height:1.55
+}
+.rigorous-sky-layout{
+  display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.65fr);
+  gap:20px;align-items:center;margin-top:14px
+}
+.rigorous-sky-svg{display:block;width:100%;max-height:720px}
+.sky-atmosphere-ring{fill:#55dfff;opacity:.06}
+.sky-horizon-ring{stroke:#3d6d80;stroke-width:1.6}
+.sky-ring{fill:none;stroke:#6f93a2;stroke-width:1;stroke-dasharray:5 7;opacity:.42}
+.sky-ring.horizon{stroke:#b6cbd3;stroke-width:1.5;stroke-dasharray:none;opacity:.7}
+.sky-ring-label{fill:#8fa8b3;font:800 10px ui-monospace,monospace}
+.sky-az-line{stroke:#587b89;stroke-width:.9;opacity:.3}
+.sky-minor-az{fill:#708b98;font:800 9px ui-monospace,monospace}
+.sky-cardinal{fill:#edf8fa;font:900 13px ui-monospace,monospace;letter-spacing:.04em}
+.sky-zenith{fill:#7f99a5;font:800 10px ui-monospace,monospace}
+.sky-past-path{
+  fill:none;stroke:#8b9da6;stroke-width:2.1;stroke-dasharray:5 7;opacity:.6;
+  vector-effect:non-scaling-stroke
+}
+.sky-future-path{
+  fill:none;stroke:#5ee9ff;stroke-width:3;stroke-dasharray:7 6;opacity:.98;
+  vector-effect:non-scaling-stroke;filter:drop-shadow(0 0 4px #5ee9ff66)
+}
+.sky-time-point circle{fill:#d4f8ff;stroke:#4ecfe5;stroke-width:1}
+.sky-time-point text{fill:#bdd4dd;font:800 9px ui-monospace,monospace}
+.sky-current-halo{fill:#4ff0a4;opacity:.14}
+.sky-current-dot{fill:#effff8;stroke:#4ff0a4;stroke-width:3}
+.sky-current-label-line{stroke:#75efb7;stroke-width:1.2}
+.sky-current-label rect{fill:#031016ec;stroke:#2d6d50;stroke-width:1.1}
+.sky-current-label text{fill:#f0fcf7;font:800 13px ui-monospace,monospace}
+.sky-current-label text.sub{fill:#a6c5b7;font-size:10px;font-weight:650}
+.sky-rigor-panel{display:grid;gap:10px}
+.sky-rigor-panel>div{
+  padding:14px;border:1px solid #17394c;border-radius:10px;background:#05121b
+}
+.sky-rigor-panel span{
+  display:block;color:#708b9a;font:800 9px ui-monospace,monospace;letter-spacing:.08em
+}
+.sky-rigor-panel strong{display:block;margin-top:5px;color:#edf8fb;font-size:16px}
+.sky-rigor-panel p{margin:6px 0 0;color:#879da8;font-size:12px;line-height:1.55}
+.sky-rigor-current{border-color:#2d664e!important;background:#072019!important}
+.sky-rigor-current strong{font-size:21px!important;color:#dcfff0!important}
+.sky-rigor-current b{display:block;margin-top:5px;color:#60e8ff;font:800 12px ui-monospace,monospace}
+.sky-rigor-current small{display:block;margin-top:5px;color:#86a198;font-size:10px}
+@media(max-width:980px){
+  .rigorous-sky-layout{grid-template-columns:1fr}
+  .sky-rigor-panel{grid-template-columns:1fr 1fr}
+}
+@media(max-width:620px){
+  .rigorous-sky-panel{padding:14px}
+  .sky-rigor-panel{grid-template-columns:1fr}
+}
