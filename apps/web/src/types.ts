@@ -23,6 +23,9 @@ export type SatelliteLink = {
   elevationDeg: number;
   rangeKm: number;
   rangeRateMps: number;
+  subLatDeg: number;
+  subLonDeg: number;
+  altitudeKm: number;
   fsplDb: number;
   receivedPowerDbm: number;
   noiseDbm: number;
