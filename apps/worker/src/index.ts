@@ -1,8 +1,14 @@
 interface Env { ALLOWED_ORIGIN?: string }
 type OmmRecord = Record<string, string | number | null>;
+type CachedPayload = { fetchedAt: number; source: string; satellites: OmmRecord[] };
 
-const SOURCE = 'https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=JSON';
-const TWO_HOURS = 60 * 60 * 2;
+const SOURCES = [
+  'https://celestrak.org/NORAD/elements/gp.php?GROUP=STARLINK&FORMAT=JSON',
+  'https://celestrak.org/NORAD/elements/supplemental/sup-gp.php?SOURCE=SpaceX-E&FORMAT=JSON',
+];
+const REFRESH_MS = 2 * 60 * 60 * 1000;
+const STALE_TTL_SECONDS = 24 * 60 * 60;
+const CACHE_KEY = new Request('https://leo-link-lab.internal/cache/starlink');
 
 function cors(env: Env) {
   return {
@@ -12,21 +18,40 @@ function cors(env: Env) {
   };
 }
 
-async function getStarlinkData(): Promise<OmmRecord[]> {
-  const cache = caches.default;
-  const key = new Request(SOURCE);
-  let response = await cache.match(key);
+async function fetchSource(url: string): Promise<OmmRecord[]> {
+  const response = await fetch(url, {
+    headers: { 'User-Agent': 'leo-link-lab/0.1 educational-project' },
+  });
+  if (!response.ok) throw new Error(`${new URL(url).pathname} returned HTTP ${response.status}`);
+  const data = await response.json<OmmRecord[]>();
+  if (!Array.isArray(data) || data.length === 0) throw new Error('CelesTrak returned an empty dataset');
+  return data;
+}
 
-  if (!response) {
-    const upstream = await fetch(SOURCE, {
-      headers: { 'User-Agent': 'leo-link-lab/0.1 educational-project' },
-    });
-    if (!upstream.ok) throw new Error(`CelesTrak returned HTTP ${upstream.status}`);
-    response = new Response(upstream.body, upstream);
-    response.headers.set('Cache-Control', `public, max-age=${TWO_HOURS}`);
-    await cache.put(key, response.clone());
+async function getStarlinkData(): Promise<CachedPayload & { stale: boolean }> {
+  const cache = caches.default;
+  const cachedResponse = await cache.match(CACHE_KEY);
+  const cached = cachedResponse ? await cachedResponse.json<CachedPayload>() : null;
+  const ageMs = cached ? Date.now() - cached.fetchedAt : Number.POSITIVE_INFINITY;
+
+  if (cached && ageMs < REFRESH_MS) return { ...cached, stale: false };
+
+  const errors: string[] = [];
+  for (const source of SOURCES) {
+    try {
+      const satellites = await fetchSource(source);
+      const payload: CachedPayload = { fetchedAt: Date.now(), source, satellites };
+      await cache.put(CACHE_KEY, Response.json(payload, {
+        headers: { 'Cache-Control': `public, max-age=${STALE_TTL_SECONDS}` },
+      }));
+      return { ...payload, stale: false };
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
   }
-  return response.json<OmmRecord[]>();
+
+  if (cached) return { ...cached, stale: true };
+  throw new Error(errors.join(' | '));
 }
 
 function sampleEvenly<T>(items: T[], limit: number) {
@@ -46,11 +71,14 @@ export default {
     try {
       const requested = Number(url.searchParams.get('limit') || '900');
       const limit = Math.max(50, Math.min(2000, Number.isFinite(requested) ? requested : 900));
-      const data = await getStarlinkData();
-      const sampled = sampleEvenly(data, limit);
+      const payload = await getStarlinkData();
+      const sampled = sampleEvenly(payload.satellites, limit);
       return Response.json({
-        source: 'CelesTrak GP / Starlink',
-        total: data.length,
+        source: payload.source.includes('supplemental') ? 'CelesTrak SupGP / SpaceX ephemeris' : 'CelesTrak GP / Starlink',
+        sourceUrl: payload.source,
+        fetchedAt: new Date(payload.fetchedAt).toISOString(),
+        stale: payload.stale,
+        total: payload.satellites.length,
         returned: sampled.length,
         satellites: sampled,
       }, { headers: { ...headers, 'Cache-Control': 'public, max-age=300' } });
