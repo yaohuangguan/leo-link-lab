@@ -14,6 +14,8 @@ const CACHE_KEY = new Request('https://leo-link-lab.internal/cache/starlink');
 const FALLBACK_FETCHED_AT = Date.now();
 const GEOCODE_TTL_SECONDS = 30 * 24 * 60 * 60;
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
+const ESRI_IMAGERY = 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile';
+const IMAGERY_CACHE_SECONDS = 7 * 24 * 60 * 60;
 
 function cors(env: Env) {
   return {
@@ -74,6 +76,35 @@ function sampleEvenly<T>(items: T[], limit: number) {
   return Array.from({ length: limit }, (_, i) => items[Math.floor(i * stride)]);
 }
 
+async function imageryTile(z: number, x: number, y: number) {
+  if (![z, x, y].every(Number.isInteger) || z < 0 || z > 18 || x < 0 || y < 0) {
+    return new Response('Invalid tile coordinates', { status: 400 });
+  }
+
+  const tileUrl = `${ESRI_IMAGERY}/${z}/${y}/${x}`;
+  const cacheKey = new Request(`https://leo-link-lab.internal/cache/imagery/${z}/${x}/${y}`);
+  const cached = await caches.default.match(cacheKey);
+  if (cached) return cached;
+
+  const response = await fetch(tileUrl, {
+    signal: AbortSignal.timeout(8000),
+    headers: { 'User-Agent': 'LEO-Link-Lab/1.0 satellite-education-map' },
+  });
+  if (!response.ok) return new Response('Imagery upstream error', { status: response.status });
+
+  const result = new Response(response.body, {
+    headers: {
+      'Content-Type': response.headers.get('Content-Type') || 'image/jpeg',
+      'Cache-Control': `public, max-age=${IMAGERY_CACHE_SECONDS}`,
+      'Access-Control-Allow-Origin': '*',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+    },
+  });
+
+  await caches.default.put(cacheKey, result.clone());
+  return result;
+}
+
 async function geocode(query: string) {
   const normalized = query.trim().replace(/\s+/g, ' ');
   const cacheKey = new Request(`https://leo-link-lab.internal/cache/geocode?q=${encodeURIComponent(normalized.toLowerCase())}`);
@@ -115,6 +146,22 @@ export default {
     const headers = cors(env);
     if (request.method === 'OPTIONS') return new Response(null, { headers });
     if (url.pathname === '/health') return Response.json({ ok: true }, { headers });
+
+    const imageryMatch = url.pathname.match(/^\/api\/imagery\/(\d+)\/(\d+)\/(\d+)$/);
+    if (imageryMatch) {
+      const [, z, x, y] = imageryMatch;
+      const response = await imageryTile(Number(z), Number(x), Number(y));
+      const body = await response.arrayBuffer();
+      return new Response(body, {
+        status: response.status,
+        headers: {
+          ...headers,
+          'Content-Type': response.headers.get('Content-Type') || 'image/jpeg',
+          'Cache-Control': response.headers.get('Cache-Control') || `public, max-age=${IMAGERY_CACHE_SECONDS}`,
+          'Cross-Origin-Resource-Policy': 'cross-origin',
+        },
+      });
+    }
 
     if (url.pathname === '/api/geocode') {
       const query = (url.searchParams.get('q') || '').trim();
