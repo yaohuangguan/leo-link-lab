@@ -577,3 +577,23 @@ html[lang='zh-CN'] body{font-family:Inter,'PingFang SC','Microsoft YaHei',ui-san
   .visible-satellite-drawer.collapsed{width:172px}
   .constellation-status{left:8px;right:auto;top:8px;max-width:210px}
 }
+
+
+/* Real Earth is the primary overview; keep the secondary sky plot compact beside Current Link. */
+.overview-section .earth-view-panel{
+  margin-top:18px;
+  border-color:#24566d;
+  box-shadow:0 20px 60px #0007,0 0 0 1px #163b4e inset;
+}
+.overview-section .real-earth-map{height:clamp(560px,68vh,820px)}
+.link-section-grid .rigorous-sky-layout{grid-template-columns:1fr}
+.link-section-grid .sky-rigor-panel{grid-template-columns:repeat(2,minmax(0,1fr))}
+.link-section-grid .rigorous-sky-svg{max-height:560px}
+@media(max-width:1180px){
+  .link-section-grid{grid-template-columns:1fr}
+  .link-section-grid .sky-rigor-panel{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:620px){
+  .overview-section .real-earth-map{height:460px}
+  .link-section-grid .sky-rigor-panel{grid-template-columns:1fr}
+}

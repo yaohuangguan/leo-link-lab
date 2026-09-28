@@ -34,7 +34,7 @@ const initialRadio: RadioConfig = {
 const fmt = (n: number, digits = 1) => Number.isFinite(n) ? n.toFixed(digits) : '—';
 
 const sections = [
-  ['overview', 'Sky view'],
+  ['overview', 'Real Earth'],
   ['link', 'Current link'],
   ['budget', 'Link budget'],
   ['pass', 'Pass & handover'],
@@ -326,26 +326,26 @@ export default function App() {
             </div>
             {manualSelection && <button type="button" onClick={returnToAuto}>{t('Return to auto tracking')}</button>}
           </div>
-          <SkyPlot current={tracked} track={skyTrack} locationLabel={station.label} />
+          <EarthTrack
+            current={tracked}
+            station={station}
+            stationLabel={station.label}
+            track={earthTrack}
+            visible={visible}
+            onSelectSatellite={noradId => pinSatellite(noradId, false)}
+            apiBase={API}
+          />
         </section>
 
         <section id="link" className="page-section">
           <SectionHeading
             kicker={t('CURRENT CONNECTION')}
             title={t('One tracked satellite, two different spatial views.')}
-            description={t("Current Link explains the radio connection. The globe separately shows the satellite's subpoint on Earth relative to the selected observer.")}
+            description={t("Current Link explains the radio connection. The sky plot shows the same tracked satellite from the observer's local horizon.")}
           />
           <div className="two-column-section link-section-grid">
             <CurrentLinkPanel current={tracked} radio={radio} manualSelection={manualSelection} />
-            <EarthTrack
-              current={tracked}
-              station={station}
-              stationLabel={station.label}
-              track={earthTrack}
-              visible={visible}
-              onSelectSatellite={noradId => pinSatellite(noradId, false)}
-              apiBase={API}
-            />
+            <SkyPlot current={tracked} track={skyTrack} locationLabel={station.label} />
           </div>
         </section>
 

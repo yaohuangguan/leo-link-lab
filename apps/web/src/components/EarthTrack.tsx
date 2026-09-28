@@ -148,8 +148,9 @@ export default function EarthTrack({
   const constellationWorkerRef = useRef<Worker | null>(null);
   const catalogLoadedRef = useRef(false);
   const showAllRef = useRef(false);
+  const hasInitialSatelliteFocusRef = useRef(false);
 
-  const [viewMode, setViewMode] = useState<ViewMode>('observer');
+  const [viewMode, setViewMode] = useState<ViewMode>('satellite');
   const [mapReady, setMapReady] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(true);
   const [showAllSatellites, setShowAllSatellites] = useState(false);
@@ -246,10 +247,13 @@ export default function EarthTrack({
       });
 
       setMapReady(true);
+      const initialCenter: [number, number] = current
+        ? [current.subLonDeg, current.subLatDeg]
+        : [station.lonDeg, station.latDeg];
       map.flyTo({
-        center: [station.lonDeg, station.latDeg],
-        zoom: 9,
-        pitch: 58,
+        center: initialCenter,
+        zoom: current ? 7.2 : 9,
+        pitch: current ? 50 : 58,
         bearing: 0,
         duration: 1200,
         essential: true,
@@ -272,9 +276,9 @@ export default function EarthTrack({
 
     observerMarkerRef.current?.setLngLat([station.lonDeg, station.latDeg]);
     setMarkerLabel(observerMarkerRef.current, observerName);
-    setViewMode('observer');
+    hasInitialSatelliteFocusRef.current = false;
 
-    if (mapReady) {
+    if (mapReady && viewMode === 'observer') {
       map.flyTo({
         center: [station.lonDeg, station.latDeg],
         zoom: 9,
@@ -284,7 +288,7 @@ export default function EarthTrack({
         essential: true,
       });
     }
-  }, [station.latDeg, station.lonDeg, observerName, mapReady]);
+  }, [station.latDeg, station.lonDeg, observerName, mapReady, viewMode]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -305,7 +309,19 @@ export default function EarthTrack({
       satelliteMarkerRef.current.setLngLat([current.subLonDeg, current.subLatDeg]);
       setMarkerLabel(satelliteMarkerRef.current, current.name);
     }
-  }, [current?.name, current?.subLatDeg, current?.subLonDeg]);
+
+    if (mapReady && viewMode === 'satellite' && !hasInitialSatelliteFocusRef.current) {
+      hasInitialSatelliteFocusRef.current = true;
+      map.flyTo({
+        center: [current.subLonDeg, current.subLatDeg],
+        zoom: 7.2,
+        pitch: 50,
+        bearing: 0,
+        duration: 900,
+        essential: true,
+      });
+    }
+  }, [current?.name, current?.subLatDeg, current?.subLonDeg, mapReady, viewMode]);
 
   useEffect(() => {
     const source = mapRef.current?.getSource('ground-track') as maplibregl.GeoJSONSource | undefined;
@@ -330,6 +346,7 @@ export default function EarthTrack({
     const map = mapRef.current;
     if (!map || !current) return;
     setViewMode('satellite');
+    hasInitialSatelliteFocusRef.current = true;
     map.flyTo({
       center: [current.subLonDeg, current.subLatDeg],
       zoom: 7.2,
@@ -357,6 +374,7 @@ export default function EarthTrack({
   const selectVisibleSatellite = (satellite: SatelliteLink) => {
     onSelectSatellite(satellite.noradId);
     setViewMode('satellite');
+    hasInitialSatelliteFocusRef.current = true;
 
     mapRef.current?.flyTo({
       center: [satellite.subLonDeg, satellite.subLatDeg],
