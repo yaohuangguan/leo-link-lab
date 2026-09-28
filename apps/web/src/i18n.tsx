@@ -1,3 +1,5 @@
+[Reading 240 lines from start (total: 253 lines, 14.2 KB)]
+
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 export type Language = 'en' | 'zh';
@@ -10,6 +12,7 @@ type I18nValue = {
 
 const zh: Record<string, string> = {
   'Sky view': '天空视图',
+  'Real Earth': '真实地球',
   'Current link': '当前链路',
   'Link budget': '链路预算',
   'Pass & handover': '过境与切换',
@@ -31,6 +34,7 @@ const zh: Record<string, string> = {
   'CURRENT CONNECTION': '当前连接',
   'One tracked satellite, two different spatial views.': '一颗追踪卫星，两种空间视角。',
   "Current Link explains the radio connection. The globe separately shows the satellite's subpoint on Earth relative to the selected observer.": '当前链路用于解释无线连接；Earth View 单独显示卫星相对于所选观察点的地理投影位置。',
+  "Current Link explains the radio connection. The sky plot shows the same tracked satellite from the observer's local horizon.": '当前链路解释无线连接；天空图则从观察点本地地平坐标系展示同一颗追踪卫星。',
   'SIGNAL JOURNEY': '信号传输路径',
   'Where does the signal power go?': '信号功率都损失到哪里了？',
   'Follow the live link budget from transmitter power through path loss to received power, noise floor, SNR and final link margin.': '沿着实时链路预算依次查看发射功率、路径损耗、接收功率、噪声底、SNR 和最终链路余量。',
@@ -236,15 +240,3 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<I18nValue>(() => ({
     language,
-    setLanguage: setLanguageState,
-    t: (key, vars) => interpolate(language === 'zh' ? (zh[key] ?? key) : key, vars),
-  }), [language]);
-
-  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
-}
-
-export function useI18n() {
-  const context = useContext(I18nContext);
-  if (!context) throw new Error('useI18n must be used inside I18nProvider');
-  return context;
-}
