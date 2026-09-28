@@ -34,36 +34,6 @@ function formatLon(value: number) {
   return `${Math.abs(value).toFixed(4)}°${value >= 0 ? 'E' : 'W'}`;
 }
 
-function makeMarker(kind: 'observer' | 'satellite', label: string) {
-  const root = document.createElement('div');
-  root.className = `earth-map-marker ${kind}`;
-
-  if (kind === 'satellite') {
-    const spacecraft = document.createElement('div');
-    spacecraft.className = 'satellite-spacecraft';
-    spacecraft.innerHTML = '<i class="sat-panel"></i><i class="sat-body"></i><i class="sat-direction"></i>';
-    root.append(spacecraft);
-  } else {
-    const dot = document.createElement('i');
-    root.append(dot);
-  }
-
-  const text = document.createElement('span');
-  text.textContent = label;
-  root.append(text);
-  return root;
-}
-
-function setMarkerLabel(marker: maplibregl.Marker | null, label: string) {
-  const labelNode = marker?.getElement().querySelector('span');
-  if (labelNode) labelNode.textContent = label;
-}
-
-function setSatelliteHeading(marker: maplibregl.Marker | null, headingDeg: number) {
-  const spacecraft = marker?.getElement().querySelector<HTMLElement>('.satellite-spacecraft');
-  if (spacecraft) spacecraft.style.transform = `rotate(${headingDeg}deg)`;
-}
-
 function bearingDeg(from: TrackPoint, to: TrackPoint) {
   const lat1 = from.latDeg * Math.PI / 180;
   const lat2 = to.latDeg * Math.PI / 180;
@@ -223,8 +193,6 @@ export default function EarthTrack({
   const { t, language } = useI18n();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const observerMarkerRef = useRef<maplibregl.Marker | null>(null);
-  const satelliteMarkerRef = useRef<maplibregl.Marker | null>(null);
   const constellationWorkerRef = useRef<Worker | null>(null);
   const catalogLoadedRef = useRef(false);
   const showAllRef = useRef(false);
@@ -278,20 +246,120 @@ export default function EarthTrack({
     map.addControl(new maplibregl.GlobeControl(), 'top-right');
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 
-    observerMarkerRef.current = new maplibregl.Marker({
-      element: makeMarker('observer', observerName),
-      anchor: 'bottom',
-    }).setLngLat([station.lonDeg, station.latDeg]).addTo(map);
-
-    if (current) {
-      satelliteMarkerRef.current = new maplibregl.Marker({
-        element: makeMarker('satellite', current.name),
-        anchor: 'bottom',
-      }).setLngLat([current.subLonDeg, current.subLatDeg]).addTo(map);
-    }
-
     map.on('load', () => {
       map.setProjection({ type: 'globe' });
+
+      map.addSource('observer-point', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: { label: observerName },
+          geometry: { type: 'Point', coordinates: [station.lonDeg, station.latDeg] },
+        } as any,
+      });
+      map.addLayer({
+        id: 'observer-point-halo',
+        type: 'circle',
+        source: 'observer-point',
+        paint: {
+          'circle-radius': 10,
+          'circle-color': '#4ff0a4',
+          'circle-opacity': 0.18,
+        },
+      });
+      map.addLayer({
+        id: 'observer-point-dot',
+        type: 'circle',
+        source: 'observer-point',
+        paint: {
+          'circle-radius': 5,
+          'circle-color': '#effff8',
+          'circle-stroke-color': '#4ff0a4',
+          'circle-stroke-width': 2,
+        },
+      });
+      map.addLayer({
+        id: 'observer-point-label',
+        type: 'symbol',
+        source: 'observer-point',
+        layout: {
+          'text-field': ['get', 'label'],
+          'text-size': 11,
+          'text-offset': [0.8, -1.2],
+          'text-anchor': 'left',
+          'text-allow-overlap': true,
+        },
+        paint: {
+          'text-color': '#effff8',
+          'text-halo-color': '#031018',
+          'text-halo-width': 2,
+        },
+      });
+
+      map.addSource('satellite-point', {
+        type: 'geojson',
+        data: current ? {
+          type: 'Feature',
+          properties: { label: current.name, heading: satelliteHeading },
+          geometry: { type: 'Point', coordinates: [current.subLonDeg, current.subLatDeg] },
+        } : EMPTY_GEOJSON as any,
+      });
+      map.addLayer({
+        id: 'satellite-point-halo',
+        type: 'circle',
+        source: 'satellite-point',
+        paint: {
+          'circle-radius': 12,
+          'circle-color': '#63e8ff',
+          'circle-opacity': 0.14,
+        },
+      });
+      map.addLayer({
+        id: 'satellite-point-body',
+        type: 'circle',
+        source: 'satellite-point',
+        paint: {
+          'circle-radius': 5.5,
+          'circle-color': '#17445e',
+          'circle-stroke-color': '#eaf9ff',
+          'circle-stroke-width': 2,
+        },
+      });
+      map.addLayer({
+        id: 'satellite-heading-arrow',
+        type: 'symbol',
+        source: 'satellite-point',
+        layout: {
+          'text-field': '▲',
+          'text-size': 16,
+          'text-rotate': ['get', 'heading'],
+          'text-rotation-alignment': 'map',
+          'text-offset': [0, -1.25],
+          'text-allow-overlap': true,
+        },
+        paint: {
+          'text-color': '#7dffc9',
+          'text-halo-color': '#031018',
+          'text-halo-width': 1.5,
+        },
+      });
+      map.addLayer({
+        id: 'satellite-point-label',
+        type: 'symbol',
+        source: 'satellite-point',
+        layout: {
+          'text-field': ['get', 'label'],
+          'text-size': 11,
+          'text-offset': [0.9, -1.25],
+          'text-anchor': 'left',
+          'text-allow-overlap': true,
+        },
+        paint: {
+          'text-color': '#e7faff',
+          'text-halo-color': '#031018',
+          'text-halo-width': 2,
+        },
+      });
 
       if (!map.getSource('terrain-source')) {
         map.addSource('terrain-source', {
@@ -382,8 +450,6 @@ export default function EarthTrack({
     return () => {
       constellationWorkerRef.current?.terminate();
       constellationWorkerRef.current = null;
-      observerMarkerRef.current?.remove();
-      satelliteMarkerRef.current?.remove();
       map.remove();
       mapRef.current = null;
     };
@@ -393,8 +459,12 @@ export default function EarthTrack({
     const map = mapRef.current;
     if (!map) return;
 
-    observerMarkerRef.current?.setLngLat([station.lonDeg, station.latDeg]);
-    setMarkerLabel(observerMarkerRef.current, observerName);
+    const observerSource = map.getSource('observer-point') as maplibregl.GeoJSONSource | undefined;
+    observerSource?.setData({
+      type: 'Feature',
+      properties: { label: observerName },
+      geometry: { type: 'Point', coordinates: [station.lonDeg, station.latDeg] },
+    } as any);
     hasInitialSatelliteFocusRef.current = false;
 
     if (mapReady && viewMode === 'observer') {
@@ -413,22 +483,14 @@ export default function EarthTrack({
     const map = mapRef.current;
     if (!map) return;
 
-    if (!current) {
-      satelliteMarkerRef.current?.remove();
-      satelliteMarkerRef.current = null;
-      return;
-    }
+    const satelliteSource = map.getSource('satellite-point') as maplibregl.GeoJSONSource | undefined;
+    satelliteSource?.setData(current ? {
+      type: 'Feature',
+      properties: { label: current.name, heading: satelliteHeading },
+      geometry: { type: 'Point', coordinates: [current.subLonDeg, current.subLatDeg] },
+    } as any : EMPTY_GEOJSON as any);
 
-    if (!satelliteMarkerRef.current) {
-      satelliteMarkerRef.current = new maplibregl.Marker({
-        element: makeMarker('satellite', current.name),
-        anchor: 'bottom',
-      }).setLngLat([current.subLonDeg, current.subLatDeg]).addTo(map);
-    } else {
-      satelliteMarkerRef.current.setLngLat([current.subLonDeg, current.subLatDeg]);
-      setMarkerLabel(satelliteMarkerRef.current, current.name);
-    }
-    setSatelliteHeading(satelliteMarkerRef.current, satelliteHeading);
+    if (!current) return;
 
     if (mapReady && viewMode === 'satellite' && !hasInitialSatelliteFocusRef.current) {
       hasInitialSatelliteFocusRef.current = true;
