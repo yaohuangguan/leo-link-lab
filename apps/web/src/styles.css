@@ -415,6 +415,49 @@ h2{margin:0;color:#eef8fb;font-size:20px;line-height:1.2}
   background:#020a10cc;color:#9bb0ba;font-size:9px
 }
 .real-earth-map .maplibregl-ctrl-attrib a{color:#b9d3dc}
+.earth-map-marker{
+  position:relative;width:16px;height:16px;pointer-events:none;
+}
+.earth-marker-anchor{
+  position:absolute;left:50%;top:50%;width:16px;height:16px;transform:translate(-50%,-50%);
+}
+.earth-marker-anchor>i{
+  position:absolute;left:1px;top:1px;width:14px;height:14px;border-radius:50%;border:3px solid #e9fff7;
+  box-shadow:0 0 0 5px #4ff0a42a,0 0 15px #4ff0a4
+}
+.earth-map-marker span{
+  position:absolute;left:22px;top:50%;transform:translateY(-50%);
+  padding:5px 7px;border-radius:6px;background:#031018df;border:1px solid #285c4a;
+  color:#effdf7;font:800 10px ui-monospace,monospace;white-space:nowrap
+}
+.earth-map-marker.satellite{
+  width:42px;height:28px;
+}
+.earth-map-marker.satellite .earth-marker-anchor{
+  width:42px;height:28px;
+}
+.earth-map-marker.satellite span{
+  left:48px;border-color:#2e6479;color:#e7faff;
+}
+.satellite-spacecraft{
+  position:absolute;left:0;top:0;width:42px;height:28px;transform-origin:50% 50%;
+  filter:drop-shadow(0 0 7px #63e8ffaa);transition:transform .5s linear;
+}
+.satellite-spacecraft .sat-panel{
+  position:absolute;left:2px;top:9px;width:38px;height:10px;border:1px solid #79d9ff;border-radius:2px;
+  background:repeating-linear-gradient(90deg,#173c65 0 6px,#24517c 6px 7px);
+  box-shadow:0 0 0 1px #07131a inset;
+}
+.satellite-spacecraft .sat-body{
+  position:absolute;left:16px;top:6px;width:12px;height:16px;border:1px solid #f0fbff;border-radius:3px;
+  background:#c8dbe2;box-shadow:0 0 8px #dff7ff;
+}
+.satellite-spacecraft .sat-direction{
+  position:absolute;left:18px;top:-8px;width:0;height:0;
+  border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:9px solid #7dffc9;
+  filter:drop-shadow(0 0 4px #7dffc9);
+}
+.maplibregl-marker-covered .earth-marker-anchor{opacity:.12}
 .earth-view-readout{display:grid;grid-template-columns:1.05fr 1fr .8fr 1.15fr;gap:9px;margin-top:11px}
 .earth-view-readout>div{padding:12px 13px;border:1px solid #17394b;border-radius:10px;background:#05121b}
 .earth-view-readout span{display:block;color:#708b9a;font:800 9px ui-monospace,monospace;letter-spacing:.07em}
