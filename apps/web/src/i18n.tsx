@@ -140,6 +140,10 @@ const zh: Record<string, string> = {
   'Click a satellite to pin it and move the Earth view.': '点击卫星即可锁定，并让地球视图定位到该卫星。',
   'ALL ACTIVE SATELLITES': '全部活动卫星',
   'CelesTrak ACTIVE catalog · positions update every 3 s': 'CelesTrak ACTIVE 目录 · 每 3 秒更新位置',
+  'LINK DIRECTION': '链路指向',
+  'Satellite → {observer}': '卫星 → {observer}',
+  'Calculated LOS · Az {az}° · El {el}°': '计算视线 · 方位角 {az}° · 仰角 {el}°',
+  'World Imagery is a geographic basemap, not live photography. Observer position, satellite subpoint, ground track and line of sight are calculated live. The satellite icon is a simplified model; its panel is illustrative, while the arrow follows the computed ground-track direction.': 'World Imagery 是地理底图，并非实时摄影。观察点、卫星地面投影、地面轨迹和视线方向均实时计算。卫星图标是简化模型；太阳能板仅作示意，箭头则跟随计算得到的地面轨迹运动方向。',
 
   'SIGNAL PATH': '信号路径',
   'Link budget · satellite → receiver': '链路预算 · 卫星 → 接收端',
