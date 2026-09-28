@@ -1,5 +1,3 @@
-[Reading 240 lines from start (total: 253 lines, 14.2 KB)]
-
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 export type Language = 'en' | 'zh';
@@ -240,3 +238,15 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<I18nValue>(() => ({
     language,
+    setLanguage: setLanguageState,
+    t: (key, vars) => interpolate(language === 'zh' ? (zh[key] ?? key) : key, vars),
+  }), [language]);
+
+  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
+}
+
+export function useI18n() {
+  const context = useContext(I18nContext);
+  if (!context) throw new Error('useI18n must be used inside I18nProvider');
+  return context;
+}
