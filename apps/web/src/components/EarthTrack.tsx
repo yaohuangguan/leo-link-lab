@@ -37,16 +37,96 @@ function formatLon(value: number) {
 function makeMarker(kind: 'observer' | 'satellite', label: string) {
   const root = document.createElement('div');
   root.className = `earth-map-marker ${kind}`;
-  const dot = document.createElement('i');
+
+  if (kind === 'satellite') {
+    const spacecraft = document.createElement('div');
+    spacecraft.className = 'satellite-spacecraft';
+    spacecraft.innerHTML = '<i class="sat-panel"></i><i class="sat-body"></i><i class="sat-direction"></i>';
+    root.append(spacecraft);
+  } else {
+    const dot = document.createElement('i');
+    root.append(dot);
+  }
+
   const text = document.createElement('span');
   text.textContent = label;
-  root.append(dot, text);
+  root.append(text);
   return root;
 }
 
 function setMarkerLabel(marker: maplibregl.Marker | null, label: string) {
   const labelNode = marker?.getElement().querySelector('span');
   if (labelNode) labelNode.textContent = label;
+}
+
+function setSatelliteHeading(marker: maplibregl.Marker | null, headingDeg: number) {
+  const spacecraft = marker?.getElement().querySelector<HTMLElement>('.satellite-spacecraft');
+  if (spacecraft) spacecraft.style.transform = `rotate(${headingDeg}deg)`;
+}
+
+function bearingDeg(from: TrackPoint, to: TrackPoint) {
+  const lat1 = from.latDeg * Math.PI / 180;
+  const lat2 = to.latDeg * Math.PI / 180;
+  const dLon = (to.lonDeg - from.lonDeg) * Math.PI / 180;
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+function linkGeoJson(
+  satellite: { latDeg: number; lonDeg: number } | null,
+  observer: { latDeg: number; lonDeg: number },
+) {
+  if (!satellite) return EMPTY_GEOJSON;
+
+  const start = satellite;
+  let targetLon = observer.lonDeg;
+  const delta = targetLon - start.lonDeg;
+
+  if (delta > 180) targetLon -= 360;
+  if (delta < -180) targetLon += 360;
+
+  const adjustedDelta = targetLon - start.lonDeg;
+  if (targetLon >= -180 && targetLon <= 180) {
+    return {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: { kind: 'observer-link' },
+        geometry: {
+          type: 'LineString',
+          coordinates: [[start.lonDeg, start.latDeg], [observer.lonDeg, observer.latDeg]],
+        },
+      }],
+    };
+  }
+
+  const boundary = targetLon > 180 ? 180 : -180;
+  const t = (boundary - start.lonDeg) / adjustedDelta;
+  const boundaryLat = start.latDeg + (observer.latDeg - start.latDeg) * t;
+  const wrappedBoundary = boundary === 180 ? -180 : 180;
+
+  return {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: { kind: 'observer-link' },
+        geometry: {
+          type: 'LineString',
+          coordinates: [[start.lonDeg, start.latDeg], [boundary, boundaryLat]],
+        },
+      },
+      {
+        type: 'Feature',
+        properties: { kind: 'observer-link' },
+        geometry: {
+          type: 'LineString',
+          coordinates: [[wrappedBoundary, boundaryLat], [observer.lonDeg, observer.latDeg]],
+        },
+      },
+    ],
+  };
 }
 
 function splitTrack(points: TrackPoint[]) {
@@ -163,6 +243,16 @@ export default function EarthTrack({
     return language === 'zh' ? (parts[0] || stationLabel) : parts.slice(0, 2).join(' · ');
   }, [stationLabel, language]);
 
+  const satelliteHeading = useMemo(() => {
+    const ordered = [...track].sort((a, b) => a.offsetMin - b.offsetMin);
+    const currentIndex = ordered.findIndex(point => point.offsetMin >= 0);
+    const from = currentIndex > 0 ? ordered[currentIndex - 1] : ordered[0];
+    const to = currentIndex >= 0 && currentIndex < ordered.length - 1
+      ? ordered[currentIndex + 1]
+      : ordered.at(-1);
+    return from && to ? bearingDeg(from, to) : 0;
+  }, [track]);
+
   useEffect(() => {
     showAllRef.current = showAllSatellites;
   }, [showAllSatellites]);
@@ -227,6 +317,35 @@ export default function EarthTrack({
           'circle-opacity': ['interpolate', ['linear'], ['zoom'], 0, 0.62, 4, 0.74, 8, 0.82],
           'circle-stroke-color': '#164a60',
           'circle-stroke-width': 0.45,
+        },
+      });
+
+      map.addSource('observer-link', {
+        type: 'geojson',
+        data: linkGeoJson(
+          current ? { latDeg: current.subLatDeg, lonDeg: current.subLonDeg } : null,
+          station,
+        ) as any,
+      });
+      map.addLayer({
+        id: 'observer-link-glow',
+        type: 'line',
+        source: 'observer-link',
+        paint: {
+          'line-color': '#5ee9ff',
+          'line-width': 10,
+          'line-opacity': 0.16,
+        },
+      });
+      map.addLayer({
+        id: 'observer-link-line',
+        type: 'line',
+        source: 'observer-link',
+        paint: {
+          'line-color': '#7cf5ff',
+          'line-width': 3,
+          'line-opacity': 0.95,
+          'line-dasharray': [1.4, 1.15],
         },
       });
 
@@ -309,6 +428,7 @@ export default function EarthTrack({
       satelliteMarkerRef.current.setLngLat([current.subLonDeg, current.subLatDeg]);
       setMarkerLabel(satelliteMarkerRef.current, current.name);
     }
+    setSatelliteHeading(satelliteMarkerRef.current, satelliteHeading);
 
     if (mapReady && viewMode === 'satellite' && !hasInitialSatelliteFocusRef.current) {
       hasInitialSatelliteFocusRef.current = true;
@@ -321,12 +441,20 @@ export default function EarthTrack({
         essential: true,
       });
     }
-  }, [current?.name, current?.subLatDeg, current?.subLonDeg, mapReady, viewMode]);
+  }, [current?.name, current?.subLatDeg, current?.subLonDeg, mapReady, viewMode, satelliteHeading]);
 
   useEffect(() => {
     const source = mapRef.current?.getSource('ground-track') as maplibregl.GeoJSONSource | undefined;
     source?.setData(trackGeoJson(track) as any);
   }, [track]);
+
+  useEffect(() => {
+    const source = mapRef.current?.getSource('observer-link') as maplibregl.GeoJSONSource | undefined;
+    source?.setData(linkGeoJson(
+      current ? { latDeg: current.subLatDeg, lonDeg: current.subLonDeg } : null,
+      station,
+    ) as any);
+  }, [current?.subLatDeg, current?.subLonDeg, station.latDeg, station.lonDeg, mapReady]);
 
   const flyObserver = () => {
     const map = mapRef.current;
@@ -552,9 +680,14 @@ export default function EarthTrack({
           <strong>{t('Past + future path')}</strong>
           <small>{t('Grey = past · cyan = future')}</small>
         </div>
+        <div>
+          <span>{t('LINK DIRECTION')}</span>
+          <strong>{current ? t('Satellite → {observer}', { observer: observerName }) : '—'}</strong>
+          <small>{current ? t('Calculated LOS · Az {az}° · El {el}°', { az: current.azimuthDeg.toFixed(1), el: current.elevationDeg.toFixed(1) }) : t('No tracked satellite')}</small>
+        </div>
       </div>
 
-      <div className="earth-view-note">{t('World Imagery is a geographic basemap, not live photography. Observer position, satellite subpoint and ground track are the live layers.')}</div>
+      <div className="earth-view-note">{t('World Imagery is a geographic basemap, not live photography. Observer position, satellite subpoint, ground track and line of sight are calculated live. The satellite icon is a simplified model; its panel is illustrative, while the arrow follows the computed ground-track direction.')}</div>
     </section>
   );
 }
